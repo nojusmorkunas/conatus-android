@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Plain http is allowed here so a self-hosted server on the local network works without
+     HTTPS. The app itself refuses plain http to anything else: see allowsPlainHttp, checked on
+     every connection by AppContainer's network interceptor. -->
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+    <base-config
+        cleartextTrafficPermitted="true"
+        tools:ignore="InsecureBaseConfiguration" />
+</network-security-config>

@@ -1,0 +1,11 @@
+<resources>
+    <style name="Theme.Conatus" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- Quick add over another app: a see-through window, so only the sheet shows. -->
+    <style name="Theme.Conatus.Overlay">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
+</resources>

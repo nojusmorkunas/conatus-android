@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The stairs mark from the web app's icon.svg, for drawing at any size and tinting with one colour. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="32dp"
+    android:height="32dp"
+    android:viewportWidth="256"
+    android:viewportHeight="256">
+    <path
+        android:fillColor="#FF000000"
+        android:fillType="evenOdd"
+        android:pathData="M96 96H224A16 16 0 0 1 240 112V144A16 16 0 0 1 224 160H96A16 16 0 0 1 80 144V112A16 16 0 0 1 96 96ZM32 176H224A16 16 0 0 1 240 192V224A16 16 0 0 1 224 240H32A16 16 0 0 1 16 224V192A16 16 0 0 1 32 176ZM160 16H224A16 16 0 0 1 240 32V64A16 16 0 0 1 224 80H160A16 16 0 0 1 144 64V32A16 16 0 0 1 160 16ZM160 32H224V64H160Z" />
+</vector>

@@ -1,0 +1,6 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Release's launcher name, applied through the appLabel manifest placeholder. Debug and
+         preview builds use their own names, so lint can't see this one being used. -->
+    <string name="app_name" tools:ignore="UnusedResources">Conatus</string>
+    <string name="widget_description">Today\'s tasks, with checkboxes to complete them.</string>
+</resources>
