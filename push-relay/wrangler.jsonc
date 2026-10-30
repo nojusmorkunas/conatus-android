@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "conatus-push-relay",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-01",
+  "observability": { "enabled": true },
+  // Counts are per Cloudflare location and approximate. A Conatus server sends
+  // at most one wake-up per device every five seconds, plus two retries, so
+  // 20 a minute per device leaves room. One server posts for all its devices
+  // from one address, hence the higher limit per IP. namespace_id only has to
+  // be unique within the Cloudflare account.
+  "ratelimits": [
+    { "name": "DEVICE_LIMIT", "namespace_id": "7101", "simple": { "limit": 20, "period": 60 } },
+    { "name": "IP_LIMIT", "namespace_id": "7102", "simple": { "limit": 600, "period": 60 } }
+  ]
+}
