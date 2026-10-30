@@ -29,6 +29,7 @@ import com.useconatus.app.data.net.normalizeServerUrl
 import com.useconatus.app.data.net.toApiProblem
 import com.useconatus.app.data.prefs.SettingsStore
 import com.useconatus.app.data.sync.inbox
+import com.useconatus.app.push.Push
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -143,6 +144,8 @@ class SessionRepository(
 
     /** [notice] says why, when the server ended the sign-in. Signing out yourself also revokes the token there. */
     suspend fun signOut(notice: String? = null) {
+        // Before the revoke, so the server stops waking this phone even if the revoke doesn't get through.
+        if (notice == null && store.token() != null) withTimeoutOrNull(5_000) { Push.unregister(api()) }
         val revoked = notice != null || revokeToken()
         WorkManager.getInstance(context).cancelUniqueWork(SYNC_WORK)
         WorkManager.getInstance(context).cancelUniqueWork("sync-now")

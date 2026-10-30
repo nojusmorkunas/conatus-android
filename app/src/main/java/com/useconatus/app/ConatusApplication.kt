@@ -13,6 +13,11 @@ import com.useconatus.app.data.sync.TaskWrites
 import com.useconatus.app.data.sync.NoteWrites
 import com.useconatus.app.data.sync.localTimeToMillis
 import com.useconatus.app.notify.Reminders
+import com.useconatus.app.data.prefs.Session
+import com.useconatus.app.push.Push
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -57,6 +62,11 @@ class ConatusApplication : Application() {
         publishShortcuts(this)
         // A sign-in from before the hourly sync was scheduled reliably may not have one.
         container.scope.launch { if (container.store.token() != null) SyncWorker.scheduleHourly(this@ConatusApplication) }
+        // The server gets this phone's push address at every sign-in and every start, so a server
+        // that learned push since, or a lost registration, catches up.
+        container.scope.launch {
+            container.store.session.map { it is Session.SignedIn }.distinctUntilChanged().filter { it }.collect { container.registerPush() }
+        }
         // The widget shows today's tasks, so it's redrawn when they change or the day does.
         container.scope.launch {
             container.days().flatMapLatest { container.db.tasks().observeDueBy(it.toString()) }.debounce(500).collect { TodayWidget().updateAll(this@ConatusApplication) }
@@ -65,7 +75,7 @@ class ConatusApplication : Application() {
 }
 
 /** Builds the app's dependencies once. No DI framework: this is the only place objects get wired. */
-class AppContainer(context: Context) {
+class AppContainer(private val context: Context) {
     val store = SettingsStore(context, TokenCipher { keystoreKey() })
     val db = ConatusDatabase.create(context)
 
@@ -103,7 +113,7 @@ class AppContainer(context: Context) {
 
     val outbox = Outbox(db)
 
-    val sync = SyncRepository(db, outbox, store, ::api) {
+    val sync = SyncRepository(db, outbox, store, ::api, dismissReminders = { reminders.dismiss(it) }) {
         session.signOut("This phone's sign-in was revoked on the server. Sign in again.")
     }
 
@@ -111,6 +121,17 @@ class AppContainer(context: Context) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val requestSync: () -> Unit = { scope.launch { SyncWorker.runSoon(context) } }
+
+    /** A push: something changed elsewhere, so sync now. */
+    fun onPush() = requestSync()
+
+    /** The server's API while signed in, otherwise null. */
+    suspend fun signedInApi(): ConatusApi? = if (store.token() != null) api() else null
+
+    /** Gives the signed-in server this phone's push address, in a build that has push. */
+    suspend fun registerPush() {
+        signedInApi()?.let { Push.register(context, it) }
+    }
 
     /** Comments and reminders. */
     val notes = NoteWrites(db, connected = { store.token() != null }, requestSync)

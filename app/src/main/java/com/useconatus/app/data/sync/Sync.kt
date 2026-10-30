@@ -17,6 +17,7 @@ import com.useconatus.app.data.net.ApiProblem
 import com.useconatus.app.data.net.ConatusApi
 import com.useconatus.app.data.net.LabelDto
 import com.useconatus.app.data.net.ProjectDto
+import com.useconatus.app.data.net.ReminderDto
 import com.useconatus.app.data.net.SectionDto
 import com.useconatus.app.data.net.TaskDto
 import com.useconatus.app.data.net.TaskPageDto
@@ -63,6 +64,39 @@ fun planTaskChanges(items: List<TaskDto>): TaskPlan {
     return TaskPlan(live, deleted)
 }
 
+/**
+ * True when a task's reminder notification is out of date because the server's version of the task
+ * is completed, deleted or due at another time than the phone's.
+ */
+fun closedElsewhere(local: TaskEntity?, server: TaskDto): Boolean =
+    local != null && !local.isCompleted && local.deletedAt == null &&
+        (server.isCompleted || server.deletedAt != null || server.dueDate != local.dueDate || server.dueTime != local.dueTime)
+
+/** What a list of the server's unseen reminders changes on the phone. */
+data class ReminderPlan(val upserts: List<ReminderEntity>, val seen: List<String>, val deleted: List<String>)
+
+/**
+ * Merges the server's unseen reminders into the phone's [known] ones. New ones are added and moved
+ * ones take the new time, ringing again when it's still to come. When [everyUnseen] (the list has
+ * them all, not only the due ones), a reminder the phone has from the server but the list leaves
+ * out was seen on another device, or deleted there if its time hasn't come. Reminders with a change
+ * still [queued] keep the phone's version.
+ */
+fun planReminders(known: List<ReminderEntity>, listed: List<ReminderDto>, everyUnseen: Boolean, queued: Set<String>, now: Long): ReminderPlan {
+    val mine = known.associateBy { it.id }
+    val upserts = listed.filter { it.id !in queued }.mapNotNull { dto ->
+        val at = instantToMillis(dto.remindAt)
+        val local = mine[dto.id]
+        if (local != null && local.remindAt == at) null
+        else ReminderEntity(dto.id, dto.taskId, at, notified = local != null && local.notified && at <= now)
+    }
+    if (!everyUnseen) return ReminderPlan(upserts, emptyList(), emptyList())
+    val ids = listed.mapTo(HashSet()) { it.id }
+    val gone = known.filter { !it.notified && it.id !in ids && it.id !in queued && !it.id.startsWith(LOCAL_ID_PREFIX) }
+    val (seen, deleted) = gone.partition { it.remindAt <= now }
+    return ReminderPlan(upserts, seen.map { it.id }, deleted.map { it.id })
+}
+
 fun TaskDto.toEntity() = TaskEntity(
     id = id, projectId = projectId, sectionId = sectionId, parentId = parentId,
     content = content, description = description.orEmpty(), priority = priority,
@@ -100,6 +134,8 @@ class SyncRepository(
     private val outbox: Outbox,
     private val store: SettingsStore,
     private val api: suspend () -> ConatusApi,
+    /** Clears the reminder notifications of these tasks. */
+    private val dismissReminders: (Collection<String>) -> Unit,
     private val onRevoked: suspend () -> Unit,
 ) {
     private val mutex = Mutex()
@@ -175,6 +211,7 @@ class SyncRepository(
         val changes = fetchTaskChanges { cursor -> api.tasks(since, cursor) }
         val plan = planTaskChanges(changes.items)
         val projectIds = projects.map { it.id }
+        val closed = mutableListOf<String>()
         db.withTransaction {
             val serverInbox = projects.firstOrNull { it.isInbox }
             db.projects().inbox()?.takeIf { serverInbox != null && it.id.startsWith(LOCAL_ID_PREFIX) }?.let { outbox.adoptProject(it.id, serverInbox!!.id) }
@@ -190,6 +227,7 @@ class SyncRepository(
             for (dto in plan.upserts) {
                 val mine = queued[dto.id]
                 if (mine == null) {
+                    if (closedElsewhere(db.tasks().get(dto.id), dto)) closed += dto.id
                     db.tasks().upsert(listOf(dto.toEntity()))
                     continue
                 }
@@ -204,7 +242,10 @@ class SyncRepository(
                 val id = dto.id
                 val mine = queued[id]
                 when {
-                    mine == null -> db.tasks().upsert(listOf(dto.toEntity()))
+                    mine == null -> {
+                        if (closedElsewhere(db.tasks().get(id), dto)) closed += id
+                        db.tasks().upsert(listOf(dto.toEntity()))
+                    }
                     // Restored here: the restore goes out below and brings it back there too.
                     mine.any { it.kind == ChangeKind.Restore } -> db.conflicts().delete(id)
                     // Deleted on both sides: nothing left to send.
@@ -218,16 +259,25 @@ class SyncRepository(
             }
             db.tasks().deleteOrphans()
         }
-        // The server lists reminders only per task, or all of them once they're due: a reminder
-        // set on another device reaches the phone at the first sync after its time.
-        val due = try {
+        dismissReminders(closed)
+        // Every unseen reminder, so one set on another device rings here at its time. A server
+        // without that list only has the due ones, which arrive at the first sync after their time.
+        val pending = try {
+            api.pendingReminders()
+        } catch (_: HttpException) {
+            null
+        }
+        val listed = pending ?: try {
             api.dueReminders()
         } catch (_: HttpException) {
             emptyList()
         }
         db.withTransaction {
-            val known = db.reminders().ids().toHashSet()
-            db.reminders().upsert(due.filter { it.id !in known && db.tasks().get(it.taskId) != null }.map { ReminderEntity(it.id, it.taskId, instantToMillis(it.remindAt)) })
+            val queued = db.changes().all().mapTo(HashSet()) { it.taskId }
+            val plan = planReminders(db.reminders().all(), listed, pending != null, queued, System.currentTimeMillis())
+            db.reminders().upsert(plan.upserts.filter { db.tasks().get(it.taskId) != null })
+            plan.seen.forEach { db.reminders().setNotified(it) }
+            plan.deleted.forEach { db.reminders().delete(it) }
         }
         store.recordSync(changes.serverTime, System.currentTimeMillis())
         when (outbox.push(api)) {

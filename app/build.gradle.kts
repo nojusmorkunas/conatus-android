@@ -1,3 +1,4 @@
+import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
 import java.util.Properties
 
 plugins {
@@ -6,6 +7,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.room)
+    alias(libs.plugins.google.services)
 }
 
 android {
@@ -65,6 +67,16 @@ android {
         }
     }
 
+    // Shared code lives in src/main. A flavor's own source set holds only what differs, which so
+    // far is how instant updates arrive.
+    flavorDimensions += "distribution"
+    productFlavors {
+        // Google Play: instant updates through Firebase Cloud Messaging and push-relay/.
+        create("play") { dimension = "distribution" }
+        // No Google code, for F-Droid. It syncs on open, after each change and every hour.
+        create("foss") { dimension = "distribution" }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -73,6 +85,12 @@ android {
     buildFeatures {
         compose = true
     }
+}
+
+// google-services.json sits in src/play, so foss builds have none, and neither do play builds
+// without the Firebase project's file. Those run without instant updates (see push/Push.kt).
+googleServices {
+    missingGoogleServicesStrategy = MissingGoogleServicesStrategy.IGNORE
 }
 
 room {
@@ -100,6 +118,8 @@ dependencies {
     implementation(libs.retrofit.kotlinx.serialization)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)
+    "playImplementation"(platform(libs.firebase.bom))
+    "playImplementation"(libs.firebase.messaging)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

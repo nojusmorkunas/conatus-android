@@ -50,11 +50,13 @@ There's no published release yet. To try the app, build it from source and insta
 
 You need JDK 21 and the Android SDK. Gradle finds the SDK through `sdk.dir` in `local.properties`, which Android Studio writes for you, or through `ANDROID_HOME`.
 
+The app comes in two flavors. `play` is the Google Play build, with instant updates: when something changes on the web or another device, the server wakes the phone through Firebase Cloud Messaging and the [push relay](./push-relay/README.md), and it syncs within seconds. `foss` has no Google code and is meant for F-Droid. It syncs when it opens, after each change and every hour.
+
 ```bash
-./gradlew assembleDebug
+./gradlew assemblePlayDebug assembleFossDebug
 ```
 
-The APK is in `app/build/outputs/apk/debug/`. Three variants install side by side:
+The APKs are in `app/build/outputs/apk/<flavor>/debug/`. The play flavor needs the Firebase project's `google-services.json` in `app/src/play/` for instant updates; without it, it builds and runs like `foss`. Three variants of each flavor install side by side:
 
 | Variant | Launcher name | What it's for |
 |---|---|---|

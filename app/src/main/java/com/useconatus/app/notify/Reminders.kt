@@ -71,15 +71,16 @@ class Reminders(private val context: Context, private val db: ConatusDatabase, p
         }
     }
 
+    /** Shown ones are tagged with their task's id, one per task, so they can be cleared when it changes. */
     @Suppress("MissingPermission") // notificationsAllowed checked it
     private fun post(reminder: ReminderEntity, taskId: String, title: String, project: String?) {
-        val id = reminder.id.hashCode()
+        val code = taskId.hashCode()
         val open = PendingIntent.getActivity(
-            context, id, AppLink.intent(context, AppLink.Task(taskId)),
+            context, code, AppLink.intent(context, AppLink.Task(taskId)),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val complete = PendingIntent.getBroadcast(
-            context, id, Intent(context, ReminderReceiver::class.java).setAction(ACTION_COMPLETE).putExtra(EXTRA_TASK, taskId).putExtra(EXTRA_NOTIFICATION, id),
+        fun action(action: String) = PendingIntent.getBroadcast(
+            context, code, Intent(context, ReminderReceiver::class.java).setAction(action).putExtra(EXTRA_TASK, taskId).putExtra(EXTRA_REMINDER, reminder.id),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val notification = NotificationCompat.Builder(context, CHANNEL)
@@ -92,9 +93,25 @@ class Reminders(private val context: Context, private val db: ConatusDatabase, p
             .setShowWhen(true)
             .setContentIntent(open)
             .setAutoCancel(true)
-            .addAction(0, "Complete", complete)
+            .addAction(0, "Complete", action(ACTION_COMPLETE))
+            .addAction(0, "Snooze $SNOOZE_MINUTES min", action(ACTION_SNOOZE))
             .build()
-        NotificationManagerCompat.from(context).notify(id, notification)
+        NotificationManagerCompat.from(context).notify(taskId, NOTIFICATION, notification)
+    }
+
+    /** Clears these tasks' notifications, once they're completed, rescheduled or deleted. */
+    fun dismiss(taskIds: Collection<String>) {
+        val manager = NotificationManagerCompat.from(context)
+        taskIds.forEach { manager.cancel(it, NOTIFICATION) }
+    }
+
+    /** Snooze on a notification: the reminder rings again in [SNOOZE_MINUTES]. */
+    suspend fun snooze(taskId: String, reminderId: String?) {
+        dismiss(listOf(taskId))
+        val at = System.currentTimeMillis() + SNOOZE_MINUTES * 60_000L
+        // A reminder's id changes when it reaches the server. Without it, a new one does the job.
+        val reminder = reminderId?.let { db.reminders().get(it) }
+        if (reminder != null) notes.snooze(reminder, at) else notes.addReminder(taskId, at)
     }
 
     companion object {
@@ -109,24 +126,30 @@ class Reminders(private val context: Context, private val db: ConatusDatabase, p
         const val CHANNEL = "reminders"
         const val ACTION_SHOW = "com.useconatus.app.SHOW_REMINDERS"
         const val ACTION_COMPLETE = "com.useconatus.app.COMPLETE_TASK"
-        /** The task Complete completes. */
+        const val ACTION_SNOOZE = "com.useconatus.app.SNOOZE_REMINDER"
+        /** The task a notification is for. */
         const val EXTRA_TASK = "task"
-        const val EXTRA_NOTIFICATION = "notification"
+        const val EXTRA_REMINDER = "reminder"
+        const val SNOOZE_MINUTES = 15
+        private const val NOTIFICATION = 1
     }
 }
 
-/** The alarm going off, Complete on a notification, and a restart or update, which clears alarms. */
+/** The alarm going off, Complete or Snooze on a notification, and a restart or update, which clears alarms. */
 class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val container = (context.applicationContext as ConatusApplication).container
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                if (intent.action == Reminders.ACTION_COMPLETE) {
-                    intent.getStringExtra(Reminders.EXTRA_TASK)?.let { id -> container.db.tasks().get(id)?.let { container.writes.complete(it) } }
-                    NotificationManagerCompat.from(context).cancel(intent.getIntExtra(Reminders.EXTRA_NOTIFICATION, 0))
-                } else {
-                    container.reminders.showDue()
+                val taskId = intent.getStringExtra(Reminders.EXTRA_TASK)
+                when {
+                    taskId == null -> container.reminders.showDue()
+                    intent.action == Reminders.ACTION_COMPLETE -> {
+                        container.db.tasks().get(taskId)?.let { container.writes.complete(it) }
+                        container.reminders.dismiss(listOf(taskId))
+                    }
+                    intent.action == Reminders.ACTION_SNOOZE -> container.reminders.snooze(taskId, intent.getStringExtra(Reminders.EXTRA_REMINDER))
                 }
                 container.reminders.reschedule()
             } finally {

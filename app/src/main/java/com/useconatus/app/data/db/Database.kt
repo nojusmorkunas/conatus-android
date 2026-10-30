@@ -326,8 +326,8 @@ interface ReminderDao {
     @Query("DELETE FROM reminders WHERE taskId = :taskId AND id NOT IN (:keep) AND id NOT LIKE 'local:%' AND id NOT IN (SELECT taskId FROM pending_changes)")
     suspend fun deleteOthers(taskId: String, keep: List<String>)
 
-    @Query("SELECT id FROM reminders")
-    suspend fun ids(): List<String>
+    @Query("SELECT * FROM reminders")
+    suspend fun all(): List<ReminderEntity>
 
     /** The next reminder to show: not shown yet, for a task that's still open and not in Trash. */
     @Query("SELECT reminders.* FROM reminders JOIN tasks ON tasks.id = reminders.taskId WHERE notified = 0 AND tasks.isCompleted = 0 AND tasks.deletedAt IS NULL ORDER BY remindAt LIMIT 1")

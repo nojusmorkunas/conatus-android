@@ -25,6 +25,7 @@ import retrofit2.http.Path
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Query
 import java.io.IOException
 import java.net.Inet6Address
@@ -137,10 +138,14 @@ interface ConatusApi {
     @GET("api/v1/reminders?due=1")
     suspend fun dueReminders(): List<ReminderDto>
 
+    /** Every reminder nobody has seen yet, including ones still to come. Older servers answer 400. */
+    @GET("api/v1/reminders?pending=1")
+    suspend fun pendingReminders(): List<ReminderDto>
+
     @POST("api/v1/reminders")
     suspend fun createReminder(@Body body: RequestBody): ReminderDto
 
-    /** The only change the server takes is {"seen": true}. */
+    /** Takes {"seen": true}, or {"remindAt": …} to move it (a snooze). Older servers only take the first. */
     @PATCH("api/v1/reminders/{id}")
     suspend fun updateReminder(@Path("id") id: String, @Body body: RequestBody): ResponseBody
 
@@ -149,6 +154,13 @@ interface ConatusApi {
 
     @PATCH("api/v1/settings")
     suspend fun updateSettings(@Body body: RequestBody): ResponseBody
+
+    /** Where the server posts a wake-up when something changes elsewhere, one per sign-in. Older servers answer 404. */
+    @PUT("api/v1/push/subscription")
+    suspend fun setPushAddress(@Body body: PushAddressDto): Response<Unit>
+
+    @DELETE("api/v1/push/subscription")
+    suspend fun deletePushAddress(): Response<Unit>
 
     companion object {
         val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
@@ -196,6 +208,8 @@ data class CommentDto(
 )
 
 @Serializable data class ReminderDto(val id: String, val taskId: String, val remindAt: String)
+
+@Serializable data class PushAddressDto(val url: String)
 
 @Serializable data class TaskPageDto(val items: List<TaskDto>, val nextCursor: String? = null, val serverTime: String)
 

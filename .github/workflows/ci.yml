@@ -33,11 +33,11 @@ jobs:
 
       # The runner's Android SDK is found through ANDROID_HOME, and missing SDK packages are downloaded on first use.
       - name: Lint, test and build
-        run: ./gradlew lintDebug testDebugUnitTest assembleDebug
+        run: ./gradlew lintPlayDebug lintFossDebug testPlayDebugUnitTest assemblePlayDebug assembleFossDebug
 
       - name: Keep the lint report
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: lint-report
-          path: app/build/reports/lint-results-debug.html
+          name: lint-reports
+          path: app/build/reports/lint-results-*Debug.html

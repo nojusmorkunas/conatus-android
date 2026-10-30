@@ -13,8 +13,10 @@ sdk.dir=/home/you/Android/Sdk
 Build and install the debug variant on an emulator or a phone:
 
 ```bash
-./gradlew installDebug
+./gradlew installPlayDebug
 ```
+
+`installFossDebug` installs the F-Droid flavor instead. Both have the same application ID, so one replaces the other.
 
 ## A server to sync with
 
@@ -31,7 +33,7 @@ From the emulator, the server is at `http://10.0.2.2:3000`. From a phone on the 
 ## Checks
 
 ```bash
-./gradlew lintDebug testDebugUnitTest assembleDebug
+./gradlew lintPlayDebug lintFossDebug testPlayDebugUnitTest assemblePlayDebug assembleFossDebug
 ```
 
 CI runs the same on every push and pull request.

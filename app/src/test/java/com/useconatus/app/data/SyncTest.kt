@@ -1,11 +1,20 @@
 package com.useconatus.app.data
 
+import com.useconatus.app.data.db.ReminderEntity
+import com.useconatus.app.data.net.ReminderDto
 import com.useconatus.app.data.net.TaskDto
 import com.useconatus.app.data.net.TaskPageDto
+import com.useconatus.app.data.sync.ReminderPlan
+import com.useconatus.app.data.sync.closedElsewhere
 import com.useconatus.app.data.sync.fetchTaskChanges
+import com.useconatus.app.data.sync.planReminders
 import com.useconatus.app.data.sync.planTaskChanges
+import com.useconatus.app.data.sync.toEntity
+import java.time.Instant
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 private fun task(id: String, updatedAt: String, deletedAt: String? = null, content: String = id) =
@@ -63,5 +72,48 @@ class SyncTest {
         )
         assertEquals(emptyList<TaskDto>(), plan.upserts)
         assertEquals(listOf("a"), plan.deletions)
+    }
+
+    @Test fun `a reminder notification goes stale when its task is completed, deleted or rescheduled elsewhere`() {
+        val open = task("a", "2026-10-26T10:00:00.000Z").copy(dueDate = "2026-10-27", dueTime = "09:00")
+        val local = open.toEntity()
+        assertFalse(closedElsewhere(local, open.copy(content = "renamed")))
+        assertTrue(closedElsewhere(local, open.copy(isCompleted = true)))
+        assertTrue(closedElsewhere(local, open.copy(deletedAt = "2026-10-26T11:00:00.000Z")))
+        assertTrue(closedElsewhere(local, open.copy(dueTime = "10:00")))
+        assertTrue(closedElsewhere(local, open.copy(dueDate = "2026-10-28")))
+        assertFalse(closedElsewhere(null, open.copy(isCompleted = true)))
+        assertFalse(closedElsewhere(local.copy(isCompleted = true), open.copy(isCompleted = true)))
+    }
+
+    @Test fun `pending reminders are added, moved and dropped when seen or deleted elsewhere`() {
+        val now = Instant.parse("2026-10-30T12:00:00Z").toEpochMilli()
+        fun at(time: String) = Instant.parse(time).toEpochMilli()
+        val known = listOf(
+            ReminderEntity("same", "t", at("2026-10-30T15:00:00Z")),
+            ReminderEntity("moved", "t", at("2026-10-30T11:00:00Z"), notified = true),
+            ReminderEntity("seen-elsewhere", "t", at("2026-10-30T11:30:00Z")),
+            ReminderEntity("deleted-elsewhere", "t", at("2026-10-30T16:00:00Z")),
+            ReminderEntity("queued", "t", at("2026-10-30T16:00:00Z")),
+            ReminderEntity("local:new", "t", at("2026-10-30T16:00:00Z")),
+            ReminderEntity("shown-here", "t", at("2026-10-30T10:00:00Z"), notified = true),
+        )
+        val listed = listOf(
+            ReminderDto("same", "t", "2026-10-30T15:00:00Z"),
+            ReminderDto("moved", "t", "2026-10-30T13:00:00Z"),
+            ReminderDto("added", "t", "2026-10-30T14:00:00Z"),
+        )
+        val plan = planReminders(known, listed, everyUnseen = true, queued = setOf("queued"), now = now)
+
+        assertEquals(
+            listOf(ReminderEntity("moved", "t", at("2026-10-30T13:00:00Z")), ReminderEntity("added", "t", at("2026-10-30T14:00:00Z"))),
+            plan.upserts,
+        )
+        assertEquals(listOf("seen-elsewhere"), plan.seen)
+        assertEquals(listOf("deleted-elsewhere"), plan.deleted)
+
+        // Only the due ones: nothing can be told apart from a reminder that's still to come.
+        val due = planReminders(known, emptyList(), everyUnseen = false, queued = emptySet(), now = now)
+        assertEquals(ReminderPlan(emptyList(), emptyList(), emptyList()), due)
     }
 }

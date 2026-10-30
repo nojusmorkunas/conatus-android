@@ -29,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.useconatus.app.push.Push
 import com.useconatus.app.AppContainer
 import com.useconatus.app.data.prefs.AppLayout
 import com.useconatus.app.data.prefs.Appearance
@@ -106,6 +107,7 @@ private fun Main(container: AppContainer, account: Session.SignedIn?, appearance
     val lastSync by container.store.lastSyncAt.collectAsStateWithLifecycle(initialValue = null)
     val unsynced by container.db.changes().observeCount().collectAsStateWithLifecycle(initialValue = 0)
     val emailReminders by container.store.emailReminders.collectAsStateWithLifecycle(initialValue = null)
+    val instantUpdates by Push.status.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var settings by rememberSaveable { mutableStateOf(false) }
     // A link opens in the layout, so Settings steps aside.
@@ -133,6 +135,7 @@ private fun Main(container: AppContainer, account: Session.SignedIn?, appearance
                     account,
                     lastSync,
                     unsynced,
+                    instantUpdates,
                     onLayout = { scope.launch { container.store.setLayout(it) } },
                     onTheme = { scope.launch { container.store.setTheme(it) } },
                     onStart = { scope.launch { container.store.setStart(it) } },

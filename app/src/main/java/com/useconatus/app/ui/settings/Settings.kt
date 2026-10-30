@@ -114,6 +114,8 @@ fun SettingsScreen(
     lastSyncAt: Long?,
     /** Changes on this phone the server hasn't confirmed yet. */
     unsynced: Int,
+    /** Whether changes made elsewhere arrive at once; null in a build without push. */
+    instantUpdates: String?,
     onLayout: (AppLayout) -> Unit,
     onTheme: (ThemeChoice) -> Unit,
     onStart: (StartScreen) -> Unit,
@@ -141,7 +143,7 @@ fun SettingsScreen(
                 appearance, account, lastSyncAt, emailReminders, onEmailReminders, onLayout, onTheme, onStart, onConnect, onBack,
                 onAccount = { page = SettingsPage.Account },
             )
-            SettingsPage.Account -> account?.let { AccountPage(it, lastSyncAt, unsynced, onSyncNow, onSignOut) { page = SettingsPage.Main } }
+            SettingsPage.Account -> account?.let { AccountPage(it, lastSyncAt, unsynced, instantUpdates, onSyncNow, onSignOut) { page = SettingsPage.Main } }
         }
     }
 }
@@ -313,7 +315,15 @@ private fun LocalCard(onConnect: () -> Unit) = Surface(
 }
 
 @Composable
-private fun AccountPage(account: Session.SignedIn, lastSyncAt: Long?, unsynced: Int, onSyncNow: () -> Unit, onSignOut: () -> Unit, onBack: () -> Unit) =
+private fun AccountPage(
+    account: Session.SignedIn,
+    lastSyncAt: Long?,
+    unsynced: Int,
+    instantUpdates: String?,
+    onSyncNow: () -> Unit,
+    onSignOut: () -> Unit,
+    onBack: () -> Unit,
+) =
     SettingsScaffold("Account", onBack) { padding ->
         var confirmSignOut by remember { mutableStateOf(false) }
         Column(Modifier.padding(padding).verticalScroll(rememberScrollState())) {
@@ -322,6 +332,7 @@ private fun AccountPage(account: Session.SignedIn, lastSyncAt: Long?, unsynced: 
             SettingRow("Server", account.serverUrl.removeSuffix("/"))
             // The one quiet place sync shows: when it last worked.
             SettingRow("Sync", syncedText(lastSyncAt), action = "Sync now" to onSyncNow)
+            instantUpdates?.let { SettingRow("Instant updates", it) }
             OutlinedButton(
                 { confirmSignOut = true },
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 24.dp).height(48.dp),

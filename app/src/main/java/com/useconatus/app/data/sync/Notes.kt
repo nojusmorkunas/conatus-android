@@ -112,6 +112,18 @@ class NoteWrites(
         }
     }
 
+    /** Moves a reminder to [at], so it rings again then. */
+    suspend fun snooze(reminder: ReminderEntity, at: Long) {
+        // Never sent: send it with the new time instead.
+        if (reminder.id.startsWith(LOCAL_ID_PREFIX)) {
+            deleteReminder(reminder)
+            return addReminder(reminder.taskId, at)
+        }
+        write(Target.Reminder, reminder.id, ChangeKind.Update, buildJsonObject { put("remindAt", Instant.ofEpochMilli(at).toString()) }, "Snooze a reminder ${where(reminder.taskId, null)}".trim()) {
+            db.reminders().upsert(listOf(reminder.copy(remindAt = at, notified = false)))
+        }
+    }
+
     /** Sends the comments and reminders made before a server was connected, after the tasks they belong to. */
     suspend fun upload() {
         db.withTransaction {
