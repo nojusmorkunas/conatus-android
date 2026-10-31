@@ -33,4 +33,4 @@ keyPassword=…
 
 The signed bundle is `app/build/outputs/bundle/playRelease/app-play-release.aab`, ready for Play Console. Without `keystore.properties` the same command still works and produces an unsigned bundle.
 
-The play build needs `app/src/play/google-services.json` from the Firebase project and the relay's address in `Push.kt` (`app/src/play/java/com/useconatus/app/push/`). Without either it still builds, but Settings shows instant updates as "Not in this build".
+The play build needs `app/src/play/google-services.json` from the Firebase project and the relay's address in `Push.kt` (`app/src/play/java/com/useconatus/app/push/`). Without either it still builds, but Settings shows instant updates as "Not in this build". The JSON file isn't in the repository: on a new machine, download it from the Firebase console under **Project settings**, **General**, **Your apps**.
