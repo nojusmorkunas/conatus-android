@@ -60,7 +60,7 @@ The APKs are in `app/build/outputs/apk/<flavor>/debug/`. The play flavor needs t
 
 | Variant | Launcher name | What it's for |
 |---|---|---|
-| `release` | Conatus | The real app, shrunk with R8 and signed with your upload key ([how](./docs/release.md)) |
+| `release` | Conatus | The real app, shrunk with R8 and signed with the upload key in `keystore.properties`, if there is one |
 | `debug` | Debug | Development. It's debuggable, so it feels slower than it is |
 | `preview` | Preview | The debug code shrunk with R8 and not debuggable, for judging how the app feels |
 

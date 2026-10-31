@@ -10,5 +10,5 @@ captures/
 keystore.properties
 hs_err_pid*.log
 replay_pid*.log
-# Firebase settings for the play flavor. Kept out of the repository; see docs/release.md.
+# Firebase settings for the play flavor, downloaded from the Firebase console.
 app/src/play/google-services.json

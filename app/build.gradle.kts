@@ -28,8 +28,8 @@ android {
         manifestPlaceholders["appLabel"] = "@string/app_name"
     }
 
-    // The Play upload key, from keystore.properties beside this project (never committed; see
-    // docs/release.md). Without it, release builds come out unsigned.
+    // The Play upload key, from keystore.properties beside this project (never committed).
+    // Without it, release builds come out unsigned.
     val upload = rootProject.file("keystore.properties").takeIf { it.exists() }?.let { file -> Properties().apply { file.inputStream().use(::load) } }
     signingConfigs {
         if (upload != null) {
