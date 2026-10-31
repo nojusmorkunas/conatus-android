@@ -31,7 +31,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
  */
 object Push {
     /** The deployed push-relay Worker, with a trailing slash. Empty turns instant updates off. */
-    private const val RELAY = ""
+    private const val RELAY = "https://conatus-push-relay.useconatus.workers.dev/"
 
     private val state = MutableStateFlow<String?>("Setting up")
 
