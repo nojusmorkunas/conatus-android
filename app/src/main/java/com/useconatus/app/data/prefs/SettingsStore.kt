@@ -61,6 +61,7 @@ class SettingsStore(private val context: Context, private val cipher: TokenCiphe
         val weekStart = intPreferencesKey("week_start")
         val userId = stringPreferencesKey("user_id")
         val emailReminders = booleanPreferencesKey("email_reminders")
+        val emailRemindersAvailable = booleanPreferencesKey("email_reminders_available")
     }
 
     @Volatile private var cachedToken: String? = null
@@ -133,20 +134,23 @@ class SettingsStore(private val context: Context, private val cipher: TokenCiphe
         }
     }
 
-    suspend fun updateUser(id: String, username: String, name: String?, timezone: String, weekStart: Int?, emailReminders: Boolean?) = context.dataStore.edit {
+    suspend fun updateUser(id: String, username: String, name: String?, timezone: String, weekStart: Int?, emailReminders: Boolean?, emailRemindersAvailable: Boolean) = context.dataStore.edit {
         it[Keys.userId] = id
         it[Keys.username] = username
         name?.let { n -> it[Keys.name] = n } ?: it.remove(Keys.name)
         it[Keys.timezone] = timezone
         weekStart?.let { w -> it[Keys.weekStart] = w }
         emailReminders?.let { e -> it[Keys.emailReminders] = e }
+        it[Keys.emailRemindersAvailable] = emailRemindersAvailable
     }
 
     /** The signed-in user's id, to tell their own comments from collaborators'. */
     val userId: Flow<String?> = context.dataStore.data.map { if (it[Keys.token] == null) null else it[Keys.userId] }
 
-    /** Whether the server also emails reminders; null without a server. */
-    val emailReminders: Flow<Boolean?> = context.dataStore.data.map { if (it[Keys.token] == null) null else it[Keys.emailReminders] ?: true }
+    /** Whether the server also emails reminders; null without a server, or when it can't send email. */
+    val emailReminders: Flow<Boolean?> = context.dataStore.data.map {
+        if (it[Keys.token] == null || it[Keys.emailRemindersAvailable] == false) null else it[Keys.emailReminders] ?: true
+    }
 
     suspend fun setEmailReminders(on: Boolean) = context.dataStore.edit { it[Keys.emailReminders] = on }
 
@@ -157,7 +161,7 @@ class SettingsStore(private val context: Context, private val cipher: TokenCiphe
     suspend fun signOut(notice: String? = null) {
         cachedToken = null
         context.dataStore.edit { prefs ->
-            listOf<Preferences.Key<*>>(Keys.token, Keys.username, Keys.name, Keys.timezone, Keys.tasksUpdatedSince, Keys.lastSyncAt, Keys.pkceVerifier, Keys.userId, Keys.emailReminders)
+            listOf<Preferences.Key<*>>(Keys.token, Keys.username, Keys.name, Keys.timezone, Keys.tasksUpdatedSince, Keys.lastSyncAt, Keys.pkceVerifier, Keys.userId, Keys.emailReminders, Keys.emailRemindersAvailable)
                 .forEach { prefs.remove(it) }
             notice?.let { prefs[Keys.notice] = it }
         }

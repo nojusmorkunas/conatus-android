@@ -211,29 +211,18 @@ private fun MainPage(
         SettingRow("Opens at", appearance.start.name, onClick = { choosingStart = true })
 
         Heading("Reminders")
-        SettingRow(
+        // Turning them off happens in Android's notification settings, which the switch opens.
+        SwitchRow(
             "Notifications",
-            if (access.allowed) "On" else "Off, so reminders won't show on this phone",
-            action = if (access.allowed) null else "Turn on" to access.turnOn,
-        )
+            if (access.allowed) "Reminders show on this phone" else "Off, so reminders won't show on this phone",
+            access.allowed,
+        ) { on -> if (on) access.turnOn() else access.turnOff() }
         if (access.allowed && !access.exact) {
             SettingRow("Exact times", "Off, so reminders can come a few minutes late", action = "Allow" to access.allowExact)
         }
         emailReminders?.let { on ->
-            Row(
-                Modifier.fillMaxWidth().toggleable(on, role = Role.Switch) { next -> scope.launch { emailProblem = onEmailReminders(next) } }
-                    .heightIn(min = 56.dp).padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text("Also by email", style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        emailProblem ?: "The server sends each reminder to your email too.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (emailProblem != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Switch(on, onCheckedChange = null)
+            SwitchRow("Also by email", emailProblem ?: "The server sends each reminder to your email too.", on, problem = emailProblem != null) { next ->
+                scope.launch { emailProblem = onEmailReminders(next) }
             }
         }
 
@@ -503,6 +492,22 @@ private fun SettingRow(title: String, state: String, action: Pair<String, () -> 
     }
     action?.let { (label, act) -> TextButton(act) { Text(label) } }
     if (onClick != null) Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+@Composable
+private fun SwitchRow(title: String, state: String, checked: Boolean, problem: Boolean = false, onChange: (Boolean) -> Unit) = Row(
+    Modifier.fillMaxWidth().toggleable(checked, role = Role.Switch, onValueChange = onChange).heightIn(min = 56.dp).padding(horizontal = 16.dp),
+    verticalAlignment = Alignment.CenterVertically,
+) {
+    Column(Modifier.weight(1f)) {
+        Text(title, style = MaterialTheme.typography.bodyLarge)
+        Text(
+            state,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (problem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    Switch(checked, onCheckedChange = null)
 }
 
 @Composable

@@ -194,6 +194,8 @@ data class UserDto(
     val weekStart: Int? = null,
     /** Whether the server emails reminders as well. */
     val emailReminders: Boolean? = null,
+    /** False when the server can't email reminders: no SMTP, or no address. Older servers don't say. */
+    val emailRemindersAvailable: Boolean = true,
 )
 
 @Serializable

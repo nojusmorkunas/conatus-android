@@ -3,6 +3,7 @@
 package com.useconatus.app.ui.task
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
@@ -116,7 +117,10 @@ fun remindersText(reminders: List<ReminderEntity>, zone: ZoneId, today: LocalDat
 }
 
 /** Whether reminders can show, and show on time, with the ways to fix each. */
-class ReminderAccess(val allowed: Boolean, val exact: Boolean, val turnOn: () -> Unit, val allowExact: () -> Unit)
+class ReminderAccess(val allowed: Boolean, val exact: Boolean, val turnOn: () -> Unit, val turnOff: () -> Unit, val allowExact: () -> Unit)
+
+private fun openNotificationSettings(context: Context) =
+    context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
 
 /** Checked again whenever the app comes back, from system settings for instance. */
 @Composable
@@ -139,9 +143,11 @@ fun rememberReminderAccess(): ReminderAccess {
                     asked = true
                     ask.launch(Manifest.permission.POST_NOTIFICATIONS)
                 } else {
-                    context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
+                    openNotificationSettings(context)
                 }
             },
+            // An app can't take back its own notification permission, so Android's settings do it.
+            turnOff = { openNotificationSettings(context) },
             // Only offered where exact alarms need asking for, Android 12 and later.
             allowExact = {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
