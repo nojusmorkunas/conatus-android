@@ -14,9 +14,9 @@
 Conatus for Android is the phone app for [Conatus](https://github.com/nojusmorkunas/conatus), the self-hosted task manager. Your tasks live on the phone and sync with your server in the background, so the app works offline and sends your changes once it has a connection. It also works without a server, as a task list that stays on the phone. It's free software under the GPL.
 
 <p align="center">
-  <img src="./docs/screenshots/comfortable.png" alt="Today in the Comfortable layout: large task rows with dates, durations and labels, a round add button and tabs at the bottom" width="32%">
-  <img src="./docs/screenshots/compact.png" alt="Today in the Compact layout: one line per task with the date on the right, and the lists as tabs at the bottom" width="32%">
-  <img src="./docs/screenshots/web.png" alt="Today in the Web layout: rows like the web app's, with a menu button and an add button" width="32%">
+  <img src="./fastlane/metadata/android/en-US/images/phoneScreenshots/comfortable.png" alt="Today in the Comfortable layout: large task rows with dates, durations and labels, a round add button and tabs at the bottom" width="32%">
+  <img src="./fastlane/metadata/android/en-US/images/phoneScreenshots/compact.png" alt="Today in the Compact layout: one line per task with the date on the right, and the lists as tabs at the bottom" width="32%">
+  <img src="./fastlane/metadata/android/en-US/images/phoneScreenshots/web.png" alt="Today in the Web layout: rows like the web app's, with a menu button and an add button" width="32%">
 </p>
 <p align="center"><sub>The same Today in the three layouts: Comfortable, Compact and Web.</sub></p>
 
@@ -31,9 +31,9 @@ Conatus for Android is the phone app for [Conatus](https://github.com/nojusmorku
 - Light and dark themes, large text and TalkBack
 
 <p align="center">
-  <img src="./docs/screenshots/details.png" alt="A task's details in a sheet: description, chips for date, repeat, deadline, duration, priority, labels and project, sub-tasks and a comment" width="32%">
-  <img src="./docs/screenshots/quickadd.png" alt="Quick add above the keyboard, with the date, time, priority and project highlighted in the text and shown as chips" width="32%">
-  <img src="./docs/screenshots/settings.png" alt="Settings with the account, a sketch of each layout to choose from, theme tiles and reminders" width="32%">
+  <img src="./fastlane/metadata/android/en-US/images/phoneScreenshots/details.png" alt="A task's details in a sheet: description, chips for date, repeat, deadline, duration, priority, labels and project, sub-tasks and a comment" width="32%">
+  <img src="./fastlane/metadata/android/en-US/images/phoneScreenshots/quickadd.png" alt="Quick add above the keyboard, with the date, time, priority and project highlighted in the text and shown as chips" width="32%">
+  <img src="./fastlane/metadata/android/en-US/images/phoneScreenshots/settings.png" alt="Settings with the account, a sketch of each layout to choose from, theme tiles and reminders" width="32%">
 </p>
 
 ## Requirements

@@ -23,7 +23,7 @@ android {
         minSdk = 26
         targetSdk = 37
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "1.0.0"
         // Launcher names. Test builds get short ones that say what they are.
         manifestPlaceholders["appLabel"] = "@string/app_name"
     }

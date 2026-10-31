@@ -1,0 +1,15 @@
+Conatus for Android is the phone app for Conatus, the self-hosted task manager. Your tasks live on the phone and sync with your server in the background, so the app works offline and sends your changes once it has a connection. It also works without a server, as a task list that stays on the phone.
+
+• Three layouts. Comfortable has big rows and tabs at the bottom, for one hand. Compact fits a task on each line. Web looks and works like the web app.
+• Today, Upcoming with a month calendar, projects with sections and sub-tasks, labels, search, Completed and Trash
+• Quick add that reads dates, repeats, priorities, projects and labels from the task name, offline too
+• Reminders as notifications, scheduled on the phone, so they arrive without a connection
+• Recurring tasks, deadlines, durations, priorities and comments
+• A long press selects tasks, to complete, move, reschedule or delete several at once
+• A Today widget, a Quick Settings tile, launcher shortcuts and new tasks from text shared by other apps
+• Sign-in with a password or through the browser, which covers single sign-on
+• Light and dark themes, large text and TalkBack
+
+To sync, you need a Conatus server running 1.3.2 or newer. It needs HTTPS unless it's on your own network.
+
+This build has no Google code. It syncs when it opens, after each change and every hour.

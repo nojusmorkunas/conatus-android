@@ -1,0 +1,1 @@
+First release. Today, Upcoming, projects, labels, search, quick add, reminders, a Today widget and three layouts, synced with your Conatus server or kept on the phone.
