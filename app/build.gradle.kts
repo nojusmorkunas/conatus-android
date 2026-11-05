@@ -28,16 +28,25 @@ android {
         manifestPlaceholders["appLabel"] = "@string/app_name"
     }
 
-    // The Play upload key, from keystore.properties beside this project (never committed).
-    // Without it, release builds come out unsigned.
-    val upload = rootProject.file("keystore.properties").takeIf { it.exists() }?.let { file -> Properties().apply { file.inputStream().use(::load) } }
+    // Two keys, both from keystore.properties beside this project (never committed). The upload
+    // key signs the bundle for Play. The release key signs the APKs attached to GitHub releases,
+    // which are built with -PgithubApk. Without a key, release builds come out unsigned.
+    val keys = rootProject.file("keystore.properties").takeIf { it.exists() }?.let { file -> Properties().apply { file.inputStream().use(::load) } }
     signingConfigs {
-        if (upload != null) {
+        if (keys != null) {
             create("upload") {
-                storeFile = file(upload.getProperty("storeFile"))
-                storePassword = upload.getProperty("storePassword")
-                keyAlias = upload.getProperty("keyAlias")
-                keyPassword = upload.getProperty("keyPassword")
+                storeFile = file(keys.getProperty("storeFile"))
+                storePassword = keys.getProperty("storePassword")
+                keyAlias = keys.getProperty("keyAlias")
+                keyPassword = keys.getProperty("keyPassword")
+            }
+            if (keys.containsKey("releaseStoreFile")) {
+                create("release") {
+                    storeFile = file(keys.getProperty("releaseStoreFile"))
+                    storePassword = keys.getProperty("releaseStorePassword")
+                    keyAlias = keys.getProperty("releaseKeyAlias")
+                    keyPassword = keys.getProperty("releaseKeyPassword")
+                }
             }
         }
     }
@@ -47,7 +56,9 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.findByName("upload")
+            signingConfig =
+                if (providers.gradleProperty("githubApk").isPresent) signingConfigs.getByName("release")
+                else signingConfigs.findByName("upload")
         }
         debug {
             applicationIdSuffix = ".debug"
