@@ -140,7 +140,7 @@ fun taskProperties(detail: TaskDetail, today: LocalDate): List<Property> {
             val section = sections.firstOrNull { it.id == task.sectionId }
             Property("Section", section?.name ?: "No section", Icons.AutoMirrored.Outlined.Notes, Editor.Move, set = section != null)
         },
-        Property("Reminders", remindersText(detail.reminders, detail.zone, today), Icons.Outlined.Alarm, Editor.Reminders, set = detail.reminders.isNotEmpty()),
+        Property("Reminders", remindersText(detail.reminders), Icons.Outlined.Alarm, Editor.Reminders, set = detail.reminders.isNotEmpty()),
     )
 }
 
@@ -206,7 +206,7 @@ fun EditorDialog(
             problem = { tooLong(it, MAX_TITLE) },
             onDismiss = onDismiss,
         ) { onSubtask(it); onDismiss() }
-        Editor.Reminders -> RemindersDialog(detail, today, onRemind, onUnremind, onDismiss)
+        Editor.Reminders -> RemindersDialog(detail, onRemind, onUnremind, onDismiss)
     }
 }
 
