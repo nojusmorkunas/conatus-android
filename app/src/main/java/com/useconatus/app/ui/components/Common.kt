@@ -74,6 +74,22 @@ import java.util.Locale
 val LocalOpenSettings = staticCompositionLocalOf<() -> Unit> { {} }
 
 /** The phone's locale, read so Compose recomposes when it changes. */
+// What the server accepts, counted after trimming.
+const val MAX_TITLE = 500
+const val MAX_DESCRIPTION = 2000
+const val MAX_COMMENT = 2000
+const val MAX_NAME = 120
+
+/** Why [text] is too long to save, or null when it fits. */
+fun tooLong(text: String, limit: Int): String? {
+    val over = text.trim().length - limit
+    return when {
+        over <= 0 -> null
+        over == 1 -> "1 character too long. The limit is $limit."
+        else -> "$over characters too long. The limit is $limit."
+    }
+}
+
 @Composable
 fun locale(): Locale = LocalConfiguration.current.locales[0]
 

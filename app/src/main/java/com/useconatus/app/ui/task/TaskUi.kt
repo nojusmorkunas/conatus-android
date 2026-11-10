@@ -101,6 +101,9 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneOffset
 import java.util.Locale
+import com.useconatus.app.ui.components.MAX_TITLE
+import com.useconatus.app.ui.components.MAX_DESCRIPTION
+import com.useconatus.app.ui.components.tooLong
 
 // Task details pieces shared by the three layouts: what can be edited, the editors themselves,
 // and how unsynced changes are shown. Each layout lays the properties out its own way.
@@ -169,8 +172,8 @@ fun EditorDialog(
     // A time or a repeat needs a date; when there's none, today is the natural one.
     val dateIfMissing = if (task.dueDate == null) TaskEdit.Field(today.toString()) else null
     when (editor) {
-        Editor.Title -> TextDialog("Task name", task.content, required = true, onDismiss = onDismiss) { done(TaskEdit(content = it)) }
-        Editor.Description -> TextDialog("Description", task.description, required = false, onDismiss = onDismiss) { done(TaskEdit(description = it)) }
+        Editor.Title -> TextDialog("Task name", task.content, required = true, problem = { tooLong(it, MAX_TITLE) }, onDismiss = onDismiss) { done(TaskEdit(content = it)) }
+        Editor.Description -> TextDialog("Description", task.description, required = false, problem = { tooLong(it, MAX_DESCRIPTION) }, onDismiss = onDismiss) { done(TaskEdit(description = it)) }
         Editor.Date -> DateDialog(task.dueDate, "No date", onDismiss, onClear = { done(TaskEdit.noDate) }) { done(TaskEdit(dueDate = TaskEdit.Field(it.toString()))) }
         Editor.Deadline -> DateDialog(task.deadlineDate, "No deadline", onDismiss, onClear = { done(TaskEdit(deadlineDate = TaskEdit.Field(null))) }) {
             done(TaskEdit(deadlineDate = TaskEdit.Field(it.toString())))
@@ -200,6 +203,7 @@ fun EditorDialog(
         Editor.Subtask -> TextDialog(
             "Add sub-task", "", required = true,
             hint = "Dates, repeats, @label and p1 to p4 are read from the text, as in quick add.",
+            problem = { tooLong(it, MAX_TITLE) },
             onDismiss = onDismiss,
         ) { onSubtask(it); onDismiss() }
         Editor.Reminders -> RemindersDialog(detail, today, onRemind, onUnremind, onDismiss)
@@ -350,7 +354,7 @@ private fun LabelsDialog(detail: TaskDetail, onDismiss: () -> Unit, onSave: (Lis
         title = { Text("Labels") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                if (detail.labels.isEmpty()) Text("You have no labels yet. Create them in the web app.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (detail.labels.isEmpty()) Text("You have no labels yet. You can add one where your projects are listed.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 detail.labels.forEach { label ->
                     val on = label.id in chosen
                     Row(

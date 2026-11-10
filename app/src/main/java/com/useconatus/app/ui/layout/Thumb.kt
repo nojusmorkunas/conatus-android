@@ -173,6 +173,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.ui.platform.LocalConfiguration
+import com.useconatus.app.ui.components.ClearSelectionOn
+import com.useconatus.app.ui.components.PullToSync
 
 // The Thumb layout, called Comfortable on screen: bottom tabs, a + button above them, a large
 // collapsing title, roomy rows, swipe right to complete and left to reschedule, details in a sheet.
@@ -215,6 +222,9 @@ fun ThumbLayout(vm: TodayViewModel, state: TodayState, container: AppContainer) 
     val undo = if (page != null) pageUndo else tabUndo
     SelectionUndo(undo)
     val selecting = LocalTaskSelection.current.active
+    ClearSelectionOn(page, tab)
+    // Composed before the pages and sheets, so their back handlers go first.
+    BackHandler(enabled = tab != ThumbTab.Today && page == null) { tab = ThumbTab.Today }
     val link by container.links.collectAsStateWithLifecycle()
     LaunchedEffect(link) {
         when (val to = link ?: return@LaunchedEffect) {
@@ -262,13 +272,14 @@ fun ThumbLayout(vm: TodayViewModel, state: TodayState, container: AppContainer) 
         snackbarHost = { SnackbarHost(snackbar) { Snackbar(it, shape = MaterialTheme.shapes.medium) } },
         contentWindowInsets = WindowInsets(0),
     ) { padding ->
-        Box(Modifier.padding(bottom = padding.calculateBottomPadding())) {
+        // Consumed so a search list's keyboard padding doesn't count the tabs twice.
+        Box(Modifier.padding(bottom = padding.calculateBottomPadding()).consumeWindowInsets(padding)) {
             // Fade-through between tabs, as Material recommends for sibling destinations.
             AnimatedContent(tab, transitionSpec = { (fadeIn(tween(210, 90)) + scaleIn(tween(210, 90), 0.94f)) togetherWith fadeOut(tween(90)) }, label = "tab") { current ->
                 when (current) {
                     ThumbTab.Today -> ThumbToday(state, vm::refresh, actions) { reviewing = true }
                     ThumbTab.Projects -> ThumbProjects(state, openPage, { newProject = true }, { newLabel = true }) { archived = true }
-                    ThumbTab.Upcoming -> ThumbUpcoming(container, actions)
+                    ThumbTab.Upcoming -> ThumbUpcoming(container, actions, state.refreshing, vm::refresh)
                     ThumbTab.Search -> ThumbSearch(container, actions, openPage)
                 }
             }
@@ -278,10 +289,11 @@ fun ThumbLayout(vm: TodayViewModel, state: TodayState, container: AppContainer) 
         shownPage?.let { key ->
             when (key) {
                 COMPLETED -> ViewPage("Completed", pageSnackbar, { page = null }) {
-                    val vm: CompletedViewModel = viewModel { CompletedViewModel(container) }
-                    val done by vm.state.collectAsStateWithLifecycle()
-                    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-                        completedItems(done) { row, modifier -> ThumbRow(row, done.today, actions, modifier) }
+                    val done by viewModel { CompletedViewModel(container) }.state.collectAsStateWithLifecycle()
+                    PullToSync(vm) {
+                        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+                            completedItems(done) { row, modifier -> ThumbRow(row, done.today, actions, modifier) }
+                        }
                     }
                 }
                 TRASH -> ViewPage("Trash", pageSnackbar, { page = null }) {
@@ -291,7 +303,7 @@ fun ThumbLayout(vm: TodayViewModel, state: TodayState, container: AppContainer) 
                         trashItems(trash, { vm.restore(it) }, { vm.restore(it.task) })
                     }
                 }
-                else -> ThumbListPage(container, key, state, actions, pageSnackbar) { page = null }
+                else -> ThumbListPage(container, key, state, vm, actions, pageSnackbar) { page = null }
             }
         }
     }
@@ -326,34 +338,36 @@ private fun ThumbPage(
     subtitle: String?,
     refreshing: Boolean? = null,
     onRefresh: () -> Unit = {},
+    avoidKeyboard: Boolean = false,
     header: @Composable () -> Unit = {},
     actions: @Composable () -> Unit = {},
     content: LazyListScope.() -> Unit,
 ) {
-    val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    // On a short screen, such as a phone on its side, the large title would leave room for about one task.
+    val short = LocalConfiguration.current.screenHeightDp < 480
+    val scroll = if (short) TopAppBarDefaults.pinnedScrollBehavior() else TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val barTitle = @Composable {
+        Column {
+            Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            subtitle?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+    }
+    val barActions: @Composable RowScope.() -> Unit = {
+        actions()
+        val openSettings = LocalOpenSettings.current
+        IconButton(openSettings) { Icon(Icons.Outlined.Settings, "Settings") }
+    }
+    val barColors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface, scrolledContainerColor = MaterialTheme.colorScheme.surface)
     Scaffold(
         Modifier.nestedScroll(scroll.nestedScrollConnection),
         topBar = {
-            LargeTopAppBar(
-                title = {
-                    Column {
-                        Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        subtitle?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    }
-                },
-                actions = {
-                    actions()
-                    val openSettings = LocalOpenSettings.current
-                    IconButton(openSettings) { Icon(Icons.Outlined.Settings, "Settings") }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface, scrolledContainerColor = MaterialTheme.colorScheme.surface),
-                scrollBehavior = scroll,
-            )
+            if (short) TopAppBar(barTitle, actions = barActions, colors = barColors, scrollBehavior = scroll)
+            else LargeTopAppBar(barTitle, actions = barActions, colors = barColors, scrollBehavior = scroll)
         },
         contentWindowInsets = WindowInsets.statusBars,
     ) { padding ->
         // Room at the bottom for the + button.
-        val list = @Composable { LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp), content = content) }
+        val list = @Composable { LazyColumn(Modifier.fillMaxSize().then(if (avoidKeyboard) Modifier.imePadding() else Modifier), contentPadding = PaddingValues(bottom = 96.dp), content = content) }
         Column(Modifier.padding(top = padding.calculateTopPadding())) {
             // Above the list, so a list that keeps its scroll position can't push it out of view.
             header()
@@ -586,11 +600,11 @@ private fun ThumbProjects(state: TodayState, onOpen: (String) -> Unit, onNewProj
 
 /** Upcoming: tasks by date from today on, or the month calendar with repeats on every date they fall on. */
 @Composable
-private fun ThumbUpcoming(container: AppContainer, actions: RowActions) {
+private fun ThumbUpcoming(container: AppContainer, actions: RowActions, refreshing: Boolean, onRefresh: () -> Unit) {
     val vm: UpcomingViewModel = viewModel { UpcomingViewModel(container) }
     val state by vm.state.collectAsStateWithLifecycle()
     var calendar by rememberSaveable { mutableStateOf(false) }
-    ThumbPage("Upcoming", null, actions = { CalendarToggle(calendar) { calendar = it } }) {
+    ThumbPage("Upcoming", null, refreshing, onRefresh, actions = { CalendarToggle(calendar) { calendar = it } }) {
         val row: RowSlot = { task, modifier -> SwipeRow(task, state.today, actions, modifier) }
         if (calendar) calendarItems(state, vm, row = row) else upcomingItems(state, row = row)
     }
@@ -601,7 +615,7 @@ private fun ThumbSearch(container: AppContainer, actions: RowActions, onOpen: (S
     val vm: SearchViewModel = viewModel { SearchViewModel(container) }
     val query by vm.query.collectAsStateWithLifecycle()
     val state by vm.state.collectAsStateWithLifecycle()
-    ThumbPage("Search", null, header = { SearchField(query, vm::search, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }) {
+    ThumbPage("Search", null, avoidKeyboard = true, header = { SearchField(query, vm::search, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }) {
         searchItems(state, { onOpen("p:" + it.id) }, { onOpen("l:" + it.id) }) { task, modifier -> SwipeRow(task, state.today, actions, modifier) }
     }
 }
@@ -635,6 +649,7 @@ private fun ThumbListPage(
     container: AppContainer,
     key: String,
     today: TodayState,
+    todayVm: TodayViewModel,
     actions: RowActions,
     snackbar: SnackbarHostState,
     onBack: () -> Unit,
@@ -664,10 +679,12 @@ private fun ThumbListPage(
         snackbarHost = { SnackbarHost(snackbar) { Snackbar(it, shape = MaterialTheme.shapes.medium) } },
     ) { padding ->
         val toggle = { tree: TreeRow, on: Boolean -> if (on) actions.complete(tree.row) else actions.reopen(tree.row) }
-        if (list.board) {
-            ProjectBoard(list, vm, onOpen = actions.open, onToggle = toggle, onAdd = { adding = it?.id ?: "" }, modifier = Modifier.padding(padding))
-        } else {
-            ProjectList(list, vm, Modifier.padding(padding), contentPadding = PaddingValues(bottom = 96.dp)) { tree, modifier -> SwipeRow(tree.row, list.today, actions, modifier, showProject = !isProject) }
+        PullToSync(todayVm, Modifier.padding(padding)) {
+            if (list.board) {
+                ProjectBoard(list, vm, onOpen = actions.open, onToggle = toggle, onAdd = { adding = it?.id ?: "" })
+            } else {
+                ProjectList(list, vm, contentPadding = PaddingValues(bottom = 96.dp), addInSections = { adding = it?.id ?: "" }) { tree, modifier -> SwipeRow(tree.row, list.today, actions, modifier, showProject = !isProject) }
+            }
         }
     }
     adding?.let { section ->

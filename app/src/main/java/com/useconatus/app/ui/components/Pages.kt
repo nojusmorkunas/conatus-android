@@ -6,9 +6,12 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -19,6 +22,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.useconatus.app.data.db.TaskEntity
 import com.useconatus.app.ui.format.dueLabel
 import com.useconatus.app.data.sync.Completion
@@ -47,6 +51,14 @@ fun SlideOverPage(visible: Boolean, onBack: () -> Unit, content: @Composable () 
             progress = 0f
         }
     }
+}
+
+/** Pull down on any list to sync. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PullToSync(vm: TodayViewModel, modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
+    val refreshing by vm.refreshing.collectAsStateWithLifecycle()
+    PullToRefreshBox(refreshing, vm::refresh, modifier, content = content)
 }
 
 /** Says where a quick-added task went when it doesn't land in Today, the list on screen. */

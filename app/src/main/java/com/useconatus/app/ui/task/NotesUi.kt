@@ -71,6 +71,8 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
+import com.useconatus.app.ui.components.MAX_COMMENT
+import com.useconatus.app.ui.components.tooLong
 
 // Comments and reminders in task details, shared by the three layouts.
 
@@ -255,7 +257,7 @@ fun CommentList(
         CommentField(onAdd)
     }
     editing?.let { comment ->
-        TextDialog("Edit comment", comment.content, required = true, onDismiss = { editing = null }) {
+        TextDialog("Edit comment", comment.content, required = true, problem = { tooLong(it, MAX_COMMENT) }, onDismiss = { editing = null }) {
             onEdit(comment, it)
             editing = null
         }
@@ -288,14 +290,17 @@ private fun CommentItem(comment: CommentEntity, mine: Boolean, zone: ZoneId, tod
 @Composable
 private fun CommentField(onAdd: (String) -> Unit) {
     var text by rememberSaveable { mutableStateOf("") }
+    val problem = tooLong(text, MAX_COMMENT)
     OutlinedTextField(
         text,
         { text = it },
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         placeholder = { Text("Write a comment") },
         trailingIcon = {
-            IconButton({ onAdd(text); text = "" }, enabled = text.isNotBlank()) { Icon(Icons.AutoMirrored.Outlined.Send, "Add comment") }
+            IconButton({ onAdd(text); text = "" }, enabled = text.isNotBlank() && problem == null) { Icon(Icons.AutoMirrored.Outlined.Send, "Add comment") }
         },
+        isError = problem != null,
+        supportingText = problem?.let { { Text(it) } },
         maxLines = 6,
         shape = MaterialTheme.shapes.medium,
         colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.outline, unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant),

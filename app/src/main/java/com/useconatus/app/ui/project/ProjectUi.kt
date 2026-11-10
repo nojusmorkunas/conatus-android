@@ -89,6 +89,13 @@ import com.useconatus.app.ui.theme.Hue
 import com.useconatus.app.ui.theme.LocalConatusColors
 import com.useconatus.app.ui.theme.SheetShape
 import com.useconatus.app.ui.theme.sheetColor
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.window.DialogProperties
+import com.useconatus.app.ui.components.MAX_NAME
+import com.useconatus.app.ui.components.tooLong
 
 // Project and label pieces shared by the three layouts: the dialogs, the menus, the list with
 // drag and drop, and the board. Each layout brings its own task row and frame.
@@ -147,6 +154,26 @@ fun descendantIds(projects: List<ProjectEntity>, id: String): Set<String> {
     return out
 }
 
+private fun validName(name: String) = name.isNotBlank() && tooLong(name, MAX_NAME) == null
+
+/** The name in every name dialog. The keyboard's Done key saves, when the name can be saved. */
+@Composable
+private fun NameField(name: String, onChange: (String) -> Unit, enabled: Boolean = true, onDone: () -> Unit) {
+    val problem = tooLong(name, MAX_NAME)
+    OutlinedTextField(
+        name, onChange, Modifier.fillMaxWidth(),
+        label = { Text("Name") },
+        enabled = enabled,
+        singleLine = true,
+        isError = problem != null,
+        supportingText = problem?.let { { Text(it) } },
+        shape = MaterialTheme.shapes.medium,
+        colors = fieldColors(),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { if (validName(name)) onDone() }),
+    )
+}
+
 /** Creates or edits a project: name, colour, icon and the project it sits under. */
 @Composable
 fun ProjectDialog(initial: ProjectEntity?, projects: List<ProjectEntity>, onSave: (name: String, color: String, icon: String?, parentId: String?) -> Unit, onDismiss: () -> Unit) {
@@ -159,12 +186,16 @@ fun ProjectDialog(initial: ProjectEntity?, projects: List<ProjectEntity>, onSave
     val blocked = initial?.let { descendantIds(projects, it.id) + it.id }.orEmpty()
     val parents = projects.filter { !it.isInbox && !it.isArchived && it.id !in blocked }.sortedBy { it.order }
     val inbox = initial?.isInbox == true
+    val save = { onSave(name.trim(), color, icon, parent) }
     AlertDialog(
         onDismissRequest = onDismiss,
+        // Sized to the space above the keyboard, so the form scrolls and the buttons stay in view.
+        modifier = Modifier.safeDrawingPadding(),
+        properties = DialogProperties(decorFitsSystemWindows = false),
         title = { Text(if (initial == null) "New project" else "Edit project") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Name") }, enabled = !inbox, singleLine = true, shape = MaterialTheme.shapes.medium, colors = fieldColors())
+                NameField(name, { name = it }, enabled = !inbox, onDone = save)
                 Text("Colour", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 ColorPicker(color) { color = it }
                 // The Inbox always shows its own icon.
@@ -184,7 +215,7 @@ fun ProjectDialog(initial: ProjectEntity?, projects: List<ProjectEntity>, onSave
                 }
             }
         },
-        confirmButton = { TextButton({ onSave(name.trim(), color, icon, parent) }, enabled = name.isNotBlank()) { Text(if (initial == null) "Add" else "Save") } },
+        confirmButton = { TextButton(save, enabled = validName(name)) { Text(if (initial == null) "Add" else "Save") } },
         dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
         shape = MaterialTheme.shapes.large,
     )
@@ -200,12 +231,12 @@ fun LabelDialog(initial: LabelEntity?, onSave: (name: String, color: String) -> 
         title = { Text(if (initial == null) "New label" else "Edit label") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Name") }, singleLine = true, shape = MaterialTheme.shapes.medium, colors = fieldColors())
+                NameField(name, { name = it }, onDone = { onSave(name.trim(), color) })
                 Text("Colour", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 ColorPicker(color) { color = it }
             }
         },
-        confirmButton = { TextButton({ onSave(name.trim(), color) }, enabled = name.isNotBlank()) { Text(if (initial == null) "Add" else "Save") } },
+        confirmButton = { TextButton({ onSave(name.trim(), color) }, enabled = validName(name)) { Text(if (initial == null) "Add" else "Save") } },
         dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
         shape = MaterialTheme.shapes.large,
     )
@@ -218,8 +249,8 @@ fun NameDialog(title: String, initial: String, action: String, onSave: (String) 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
-        text = { OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Name") }, singleLine = true, shape = MaterialTheme.shapes.medium, colors = fieldColors()) },
-        confirmButton = { TextButton({ onSave(name.trim()); onDismiss() }, enabled = name.isNotBlank()) { Text(action) } },
+        text = { NameField(name, { name = it }, onDone = { onSave(name.trim()); onDismiss() }) },
+        confirmButton = { TextButton({ onSave(name.trim()); onDismiss() }, enabled = validName(name)) { Text(action) } },
         dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
         shape = MaterialTheme.shapes.large,
     )

@@ -56,7 +56,17 @@ class ListWrites(
             val local = projects.mapTo(HashSet()) { it.id }
             fun depth(p: ProjectEntity): Int = p.parentId?.takeIf { it in local }?.let { parent -> 1 + depth(projects.first { it.id == parent }) } ?: 0
             projects.sortedBy(::depth).forEach { queueCreate(Target.Project, it.id, projectBody(it.name, it.color, it.icon, it.parentId), "Add the project “${it.name}”") }
-            db.labels().unsent().forEach { queueCreate(Target.Label, it.id, labelBody(it.name, it.color), "Add the label “${it.name}”") }
+            // A label the account already has is reused, instead of making a second with the same name.
+            val existing = db.labels().all().filterNot { it.id.startsWith(LOCAL_ID_PREFIX) }.associateBy { it.name.lowercase() }
+            db.labels().unsent().forEach { label ->
+                val same = existing[label.name.lowercase()]
+                if (same != null) {
+                    db.tasks().renameLabel(label.id, same.id)
+                    db.labels().delete(label.id)
+                } else {
+                    queueCreate(Target.Label, label.id, labelBody(label.name, label.color), "Add the label “${label.name}”")
+                }
+            }
             db.sections().unsent().sortedBy { it.order }.forEach { queueCreate(Target.Section, it.id, sectionBody(it.projectId, it.name), "Add the section “${it.name}”") }
         }
         requestSync()

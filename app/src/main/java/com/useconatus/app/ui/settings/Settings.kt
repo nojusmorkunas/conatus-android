@@ -120,7 +120,8 @@ fun SettingsScreen(
     onTheme: (ThemeChoice) -> Unit,
     onStart: (StartScreen) -> Unit,
     onConnect: () -> Unit,
-    onSyncNow: () -> Unit,
+    /** Null when it worked, otherwise why not. */
+    onSyncNow: suspend () -> String?,
     onSignOut: () -> Unit,
     /** Whether the server also emails reminders; null without a server. */
     emailReminders: Boolean?,
@@ -309,18 +310,32 @@ private fun AccountPage(
     lastSyncAt: Long?,
     unsynced: Int,
     instantUpdates: String?,
-    onSyncNow: () -> Unit,
+    onSyncNow: suspend () -> String?,
     onSignOut: () -> Unit,
     onBack: () -> Unit,
 ) =
     SettingsScaffold("Account", onBack) { padding ->
         var confirmSignOut by remember { mutableStateOf(false) }
+        val scope = rememberCoroutineScope()
+        var syncing by remember { mutableStateOf(false) }
+        var syncProblem by remember { mutableStateOf<String?>(null) }
         Column(Modifier.padding(padding).verticalScroll(rememberScrollState())) {
             SettingRow("Name", account.name?.takeIf { it.isNotBlank() } ?: account.username)
             SettingRow("Username", account.username)
             SettingRow("Server", account.serverUrl.removeSuffix("/"))
-            // The one quiet place sync shows: when it last worked.
-            SettingRow("Sync", syncedText(lastSyncAt), action = "Sync now" to onSyncNow)
+            // The one quiet place sync shows: when it last worked, and what went wrong after tapping Sync now.
+            SettingRow(
+                "Sync",
+                if (syncing) "Syncing" else syncProblem ?: syncedText(lastSyncAt),
+                problem = syncProblem != null && !syncing,
+                action = "Sync now" to {
+                    if (!syncing) scope.launch {
+                        syncing = true
+                        syncProblem = onSyncNow()
+                        syncing = false
+                    }
+                },
+            )
             instantUpdates?.let { SettingRow("Instant updates", it) }
             OutlinedButton(
                 { confirmSignOut = true },
@@ -482,13 +497,13 @@ private fun ThemeTile(theme: ThemeChoice, selected: Boolean, modifier: Modifier,
 
 /** A setting's name and state, with a button when there's something to do, or the whole row as one when [onClick] is set. */
 @Composable
-private fun SettingRow(title: String, state: String, action: Pair<String, () -> Unit>? = null, onClick: (() -> Unit)? = null) = Row(
+private fun SettingRow(title: String, state: String, problem: Boolean = false, action: Pair<String, () -> Unit>? = null, onClick: (() -> Unit)? = null) = Row(
     Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier).heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = 8.dp),
     verticalAlignment = Alignment.CenterVertically,
 ) {
     Column(Modifier.weight(1f)) {
         Text(title, style = MaterialTheme.typography.bodyLarge)
-        Text(state, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(state, style = MaterialTheme.typography.bodyMedium, color = if (problem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
     }
     action?.let { (label, act) -> TextButton(act) { Text(label) } }
     if (onClick != null) Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)

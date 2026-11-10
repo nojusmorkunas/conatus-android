@@ -93,25 +93,30 @@ class SessionRepository(
 
     suspend fun chooseServer(input: String): String? {
         val url = normalizeServerUrl(input) ?: return "That isn't a web address. Try something like conatus.example.com."
-        return try {
-            val health = apiFor(url).health()
-            if (health.status == "ok") {
-                store.setServer(url.toString())
-                null
-            } else {
-                "The server answered, but says it isn't ready. Try again in a moment."
-            }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (error: HttpException) {
-            when (error.code()) {
-                404 -> "There's no Conatus server at that address."
-                503 -> "The server is running, but can't reach its database. Try again in a moment."
-                else -> error.toApiProblem().message
-            }
-        } catch (error: Throwable) {
-            error.toApiProblem().message
+        // A server on the local network often has no certificate, so an address without a scheme also gets a try over http.
+        return connect(url, fallback = url.newBuilder().scheme("http").build().takeIf { "://" !in input })
+    }
+
+    private suspend fun connect(url: HttpUrl, fallback: HttpUrl?): String? = try {
+        val health = apiFor(url).health()
+        if (health.status == "ok") {
+            store.setServer(url.toString())
+            null
+        } else {
+            "The server answered, but says it isn't ready. Try again in a moment."
         }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (error: HttpException) {
+        when (error.code()) {
+            404 -> "There's no Conatus server at that address."
+            503 -> "The server is running, but can't reach its database. Try again in a moment."
+            else -> error.toApiProblem().message
+        }
+    } catch (error: IOException) {
+        if (fallback != null && withContext(Dispatchers.IO) { isOnLocalNetwork(url) }) connect(fallback, null) else error.toApiProblem().message
+    } catch (error: Throwable) {
+        error.toApiProblem().message
     }
 
     suspend fun signInWithPassword(username: String, password: String): String? = attempt {

@@ -157,6 +157,9 @@ import com.useconatus.app.ui.today.TodayViewModel
 import com.useconatus.app.ui.today.inTreeOrder
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import androidx.activity.compose.BackHandler
+import com.useconatus.app.ui.components.ClearSelectionOn
+import com.useconatus.app.ui.components.PullToSync
 
 // The Index layout, called Compact on screen: every list is a tab at the bottom,
 // every task one 48dp line, a + button for adding, and details that open in place.
@@ -218,6 +221,9 @@ fun IndexLayout(vm: TodayViewModel, state: TodayState, container: AppContainer) 
     }
 
     val selecting = LocalTaskSelection.current.active
+    ClearSelectionOn(page, pager.currentPage)
+    // Composed before the pages and sheets, so their back handlers go first.
+    BackHandler(enabled = pager.currentPage != 0 && page == null) { scope.launch { pager.scrollToPage(0) } }
     var adding by rememberSaveable { mutableStateOf(false) }
     var calendar by rememberSaveable { mutableStateOf(false) }
     val current = pages.getOrNull(pager.currentPage)
@@ -309,7 +315,9 @@ fun IndexLayout(vm: TodayViewModel, state: TodayState, container: AppContainer) 
                 COMPLETED -> ViewPage("Completed", pageSnackbar, close) {
                     val done by viewModel { CompletedViewModel(container) }.state.collectAsStateWithLifecycle()
                     val row = indexRows(container, done.today, pageUndo, vm)
-                    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) { completedItems(done, rule = true, row = row) }
+                    PullToSync(vm) {
+                        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) { completedItems(done, rule = true, row = row) }
+                    }
                 }
                 TRASH -> ViewPage("Trash", pageSnackbar, close) {
                     val trashVm: TrashViewModel = viewModel { TrashViewModel(container) }
@@ -420,8 +428,10 @@ private fun IndexUpcoming(container: AppContainer, todayVm: TodayViewModel, undo
     val vm: UpcomingViewModel = viewModel { UpcomingViewModel(container) }
     val state by vm.state.collectAsStateWithLifecycle()
     val row = indexRows(container, state.today, undo, todayVm)
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 72.dp)) {
-        if (calendar) calendarItems(state, vm, rule = true, row = row) else upcomingItems(state, rule = true, row = row)
+    PullToSync(todayVm) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 72.dp)) {
+            if (calendar) calendarItems(state, vm, rule = true, row = row) else upcomingItems(state, rule = true, row = row)
+        }
     }
 }
 
@@ -588,14 +598,16 @@ private fun IndexList(container: AppContainer, key: String, todayState: TodaySta
             IndexDetails(container, tree.task.id, list.today, undo, onDelete = { open = null; undo.delete(tree.task.id) })
         }
     }
-    if (list.board) {
-        Column {
-            ProjectBoard(list, vm, onOpen = { open = it }, onToggle = { tree, on -> if (on) undo.complete(tree.task.id) else todayVm.reopen(tree.task.id) }, onAdd = { addingTo = it?.id ?: "" })
+    PullToSync(todayVm) {
+        if (list.board) {
+            Column {
+                ProjectBoard(list, vm, onOpen = { open = it }, onToggle = { tree, on -> if (on) undo.complete(tree.task.id) else todayVm.reopen(tree.task.id) }, onAdd = { addingTo = it?.id ?: "" })
+            }
+            // A board has no rows to open in place, so a card's details open in a sheet.
+            open?.let { id -> ModalBottomSheet({ open = null }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = sheetColor(), shape = SheetShape) { IndexDetails(container, id, list.today, undo, inSheet = true, onDelete = { open = null; undo.delete(id) }) } }
+        } else {
+            ProjectList(list, vm, contentPadding = PaddingValues(bottom = 72.dp), rule = true, addInSections = { addingTo = it?.id ?: "" }, row = row)
         }
-        // A board has no rows to open in place, so a card's details open in a sheet.
-        open?.let { id -> ModalBottomSheet({ open = null }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = sheetColor(), shape = SheetShape) { IndexDetails(container, id, list.today, undo, inSheet = true, onDelete = { open = null; undo.delete(id) }) } }
-    } else {
-        ProjectList(list, vm, contentPadding = PaddingValues(bottom = 72.dp), rule = true, row = row)
     }
     addingTo?.let { section ->
         val into = list.groups.firstOrNull { it.section?.id == section }?.section?.name ?: list.title

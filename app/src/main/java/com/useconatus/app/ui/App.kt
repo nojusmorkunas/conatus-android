@@ -143,7 +143,7 @@ private fun Main(container: AppContainer, account: Session.SignedIn?, appearance
                         settings = false
                         onConnect()
                     },
-                    onSyncNow = { today.refresh() },
+                    onSyncNow = today::syncNow,
                     onSignOut = {
                         settings = false
                         scope.launch { container.session.signOut() }
@@ -160,7 +160,8 @@ private fun Main(container: AppContainer, account: Session.SignedIn?, appearance
     // Tasks made before the server was connected: the user decides whether they join the account.
     if (account != null) {
         val waiting by container.db.tasks().observeUnsentCount().collectAsStateWithLifecycle(initialValue = 0)
-        if (waiting > 0) {
+        var uploading by remember { mutableStateOf(false) }
+        if (waiting > 0 && !uploading) {
             val host = account.serverUrl.toHttpUrlOrNull()?.host ?: account.serverUrl
             AlertDialog(
                 onDismissRequest = {},
@@ -168,11 +169,18 @@ private fun Main(container: AppContainer, account: Session.SignedIn?, appearance
                 text = { Text("The tasks, projects and labels on this phone aren't in your account on $host. Add them to the account, or remove them from this phone.") },
                 confirmButton = {
                     TextButton({
+                        uploading = true
                         scope.launch {
-                            // Projects, sections and labels first, so the tasks in them have somewhere to go.
-                            container.lists.upload()
-                            container.writes.upload()
-                            container.notes.upload()
+                            try {
+                                // So the labels already in the account are known, however soon this is tapped.
+                                container.sync.sync()
+                                // Projects, sections and labels first, so the tasks in them have somewhere to go.
+                                container.lists.upload()
+                                container.writes.upload()
+                                container.notes.upload()
+                            } finally {
+                                uploading = false
+                            }
                         }
                     }) { Text("Add them") }
                 },

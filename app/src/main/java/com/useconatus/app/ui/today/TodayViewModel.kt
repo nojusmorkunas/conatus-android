@@ -35,6 +35,7 @@ import java.time.Duration
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import kotlinx.coroutines.async
 
 /** A project as navigation shows it: drawer, tabs and the project shown in a task row. */
 data class ProjectItem(val id: String, val name: String, val hue: Hue, val parentId: String?, val isInbox: Boolean, val open: Int, val icon: String? = null)
@@ -218,6 +219,9 @@ class TodayViewModel(private val container: AppContainer) : ViewModel() {
 
     private val pulling = MutableStateFlow(false)
 
+    /** A pull to refresh or Sync now is running. */
+    val refreshing: StateFlow<Boolean> = pulling
+
     val state: StateFlow<TodayState> = combine(tasks, lookups, container.store.lastSyncAt, container.store.session, pulling) { (today, kept, rows), look, lastSync, session, pulling ->
         val groups = groupToday(rows, today, kept)
         val projectsById = look.projects.associateBy { it.id }
@@ -248,15 +252,18 @@ class TodayViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch { container.sync.sync() }
     }
 
-    fun refresh() {
-        viewModelScope.launch {
-            pulling.value = true
-            try {
-                container.sync.sync()
-            } finally {
-                pulling.value = false
-            }
+    /** A sync the user asked for, with the spinner. What went wrong, or null. It finishes even if the screen that asked closes. */
+    suspend fun syncNow(): String? = viewModelScope.async {
+        pulling.value = true
+        try {
+            container.sync.sync()?.message
+        } finally {
+            pulling.value = false
         }
+    }.await()
+
+    fun refresh() {
+        viewModelScope.launch { syncNow() }
     }
 
     /** [keep] leaves the row in place, struck through, until [releaseKept] (Index). */

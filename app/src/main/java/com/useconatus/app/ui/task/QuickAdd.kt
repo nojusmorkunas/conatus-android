@@ -93,6 +93,15 @@ import com.useconatus.app.ui.theme.priorityColor
 import com.useconatus.app.ui.theme.sheetColor
 import com.useconatus.app.ui.today.TodayState
 import java.time.LocalDate
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import com.useconatus.app.ui.components.MAX_TITLE
+import com.useconatus.app.ui.components.tooLong
 
 /** What quick add knows about the account: the project and label names it may recognise, and today. */
 data class QuickAddContext(val projects: List<String>, val labels: List<String>, val today: LocalDate) {
@@ -136,7 +145,14 @@ fun QuickAddField(
     val highlight = remember(context, ink, dark) { Highlight(context, ink, dark) }
     BasicTextField(
         value, onValueChange,
-        modifier = modifier.then(if (focus != null) Modifier.focusRequester(focus) else Modifier).semantics { contentDescription = placeholder },
+        modifier = modifier.then(if (focus != null) Modifier.focusRequester(focus) else Modifier)
+            .semantics { contentDescription = placeholder }
+            // A hardware keyboard's Enter adds the task, as the on-screen send key does. Shift+Enter makes a new line.
+            .onPreviewKeyEvent { event ->
+                val enter = (event.key == Key.Enter || event.key == Key.NumPadEnter) && !event.isShiftPressed
+                if (enter && event.type == KeyEventType.KeyDown) onSubmit(value.text)
+                enter
+            },
         textStyle = style.copy(color = ink),
         cursorBrush = SolidColor(ink),
         visualTransformation = highlight,
@@ -190,12 +206,13 @@ private fun Chip(icon: ImageVector, text: String, tint: Color? = null) = Surface
 fun QuickAddSheet(state: TodayState, into: String? = null, initial: String = "", onAdd: (String) -> Unit, onDismiss: () -> Unit) {
     val context = remember(state.projects, state.labels) { QuickAddContext.of(state) }
     val inbox = into ?: state.projects.firstOrNull { it.isInbox }?.name ?: "Inbox"
-    var value by remember { mutableStateOf(TextFieldValue(initial, TextRange(initial.length))) }
+    var value by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue(initial, TextRange(initial.length))) }
+    val problem = tooLong(context.preview(value.text).parsed.content, MAX_TITLE)
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     val scope = rememberCoroutineScope()
     val submit = { text: String ->
-        if (text.isNotBlank()) {
+        if (text.isNotBlank() && problem == null) {
             onAdd(text)
             value = TextFieldValue("")
         }
@@ -249,15 +266,15 @@ fun QuickAddSheet(state: TodayState, into: String? = null, initial: String = "",
                     onSubmit = submit,
                 )
                 Text(
-                    "Dates, repeats, #project, @label and p1 to p4 are read from the text.",
+                    problem ?: "Dates, repeats, #project, @label and p1 to p4 are read from the text.",
                     Modifier.padding(start = 4.dp, top = 6.dp),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (problem != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.Top) {
                     QuickAddChips(value.text, context, inbox, Modifier.weight(1f))
                     Spacer(Modifier.size(8.dp))
-                    FilledIconButton({ submit(value.text) }, Modifier.size(48.dp), enabled = value.text.isNotBlank(), shape = MaterialTheme.shapes.medium) {
+                    FilledIconButton({ submit(value.text) }, Modifier.size(48.dp), enabled = value.text.isNotBlank() && problem == null, shape = MaterialTheme.shapes.medium) {
                         Icon(Icons.Outlined.ArrowUpward, "Add task")
                     }
                 }

@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -75,6 +76,13 @@ val LocalDragSelects = compositionLocalOf { false }
 fun SelectionUndo(undo: UndoSnackbars) {
     val selection = LocalTaskSelection.current
     SideEffect { selection.undo = undo }
+}
+
+/** Selecting is for the list on screen, so a change of [place] ends it. */
+@Composable
+fun ClearSelectionOn(vararg place: Any?) {
+    val selection = LocalTaskSelection.current
+    LaunchedEffect(*place) { selection.clear() }
 }
 
 /**

@@ -150,6 +150,8 @@ import com.useconatus.app.ui.today.inTreeOrder
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import com.useconatus.app.ui.components.ClearSelectionOn
+import com.useconatus.app.ui.components.PullToSync
 
 // The Parity layout, called Web on screen: the web app on a phone, with a drawer like its sidebar, a +
 // button for quick add and task details on a page of their own.
@@ -194,6 +196,7 @@ fun ParityLayout(vm: TodayViewModel, state: TodayState, container: AppContainer)
     // The open place's tasks in order, for the details page's previous and next.
     val order = list?.groups?.flatMap { group -> group.rows.map { it.row } } ?: (state.overdue + state.dueToday)
     BackHandler(enabled = place != TODAY && !drawer.isOpen) { place = TODAY }
+    ClearSelectionOn(place)
     val link by container.links.collectAsStateWithLifecycle()
     LaunchedEffect(link) {
         when (val to = link ?: return@LaunchedEffect) {
@@ -266,7 +269,7 @@ fun ParityLayout(vm: TodayViewModel, state: TodayState, container: AppContainer)
                 Column(Modifier.padding(padding)) {
                     when {
                         place == TODAY -> ParityToday(vm, state, undo, openTask, onReschedule = { rescheduling = it }) { reviewing = true }
-                        place in setOf(UPCOMING, SEARCH, COMPLETED, TRASH) -> ParityView(container, place, calendar, searchVm, { place = it }) { today ->
+                        place in setOf(UPCOMING, SEARCH, COMPLETED, TRASH) -> ParityView(container, place, calendar, searchVm, vm, { place = it }) { today ->
                             parityRows(vm, undo, today, openTask) { rescheduling = it }
                         }
                         list != null && listVm != null -> ParityList(list, listVm, vm, undo, openTask, onReschedule = { rescheduling = it }) { addingTo = it?.id ?: "" }
@@ -452,15 +455,17 @@ private fun parityRows(vm: TodayViewModel, undo: UndoSnackbars, today: LocalDate
 
 /** Upcoming, search, Completed or Trash in Parity's main area. */
 @Composable
-private fun ParityView(container: AppContainer, place: String, calendar: Boolean, searchVm: SearchViewModel, onPlace: (String) -> Unit, rows: (LocalDate) -> RowSlot) {
+private fun ParityView(container: AppContainer, place: String, calendar: Boolean, searchVm: SearchViewModel, todayVm: TodayViewModel, onPlace: (String) -> Unit, rows: (LocalDate) -> RowSlot) {
     // Room at the bottom for the + button.
     val padding = PaddingValues(bottom = 96.dp)
     when (place) {
         UPCOMING -> {
             val vm: UpcomingViewModel = viewModel { UpcomingViewModel(container) }
             val state by vm.state.collectAsStateWithLifecycle()
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = padding) {
-                if (calendar) calendarItems(state, vm, row = rows(state.today)) else upcomingItems(state, row = rows(state.today))
+            PullToSync(todayVm) {
+                LazyColumn(Modifier.fillMaxSize(), contentPadding = padding) {
+                    if (calendar) calendarItems(state, vm, row = rows(state.today)) else upcomingItems(state, row = rows(state.today))
+                }
             }
         }
         SEARCH -> {
@@ -473,7 +478,9 @@ private fun ParityView(container: AppContainer, place: String, calendar: Boolean
         }
         COMPLETED -> {
             val state by viewModel { CompletedViewModel(container) }.state.collectAsStateWithLifecycle()
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = padding) { completedItems(state, row = rows(state.today)) }
+            PullToSync(todayVm) {
+                LazyColumn(Modifier.fillMaxSize(), contentPadding = padding) { completedItems(state, row = rows(state.today)) }
+            }
         }
         TRASH -> {
             val vm: TrashViewModel = viewModel { TrashViewModel(container) }
@@ -637,11 +644,13 @@ private fun ParityList(
 ) {
     val isProject = list.project != null
     val toggle = { tree: TreeRow, on: Boolean -> if (on) undo.complete(tree.task.id, "Completed “${tree.row.title}”") else todayVm.reopen(tree.task.id); Unit }
-    if (list.board) {
-        ProjectBoard(list, vm, onOpen, toggle, onAdd)
-    } else {
-        ProjectList(list, vm, contentPadding = PaddingValues(bottom = 96.dp), addInSections = if (isProject) onAdd else null) { tree, modifier ->
-            ParityRow(tree.row, list.today, modifier, showProject = !isProject, onOpen = { onOpen(tree.task.id) }, onReschedule = { onReschedule(tree.task.id) }, onDelete = { undo.delete(tree.task.id) }) { toggle(tree, it) }
+    PullToSync(todayVm) {
+        if (list.board) {
+            ProjectBoard(list, vm, onOpen, toggle, onAdd)
+        } else {
+            ProjectList(list, vm, contentPadding = PaddingValues(bottom = 96.dp), addInSections = onAdd) { tree, modifier ->
+                ParityRow(tree.row, list.today, modifier, showProject = !isProject, onOpen = { onOpen(tree.task.id) }, onReschedule = { onReschedule(tree.task.id) }, onDelete = { undo.delete(tree.task.id) }) { toggle(tree, it) }
+            }
         }
     }
 }
