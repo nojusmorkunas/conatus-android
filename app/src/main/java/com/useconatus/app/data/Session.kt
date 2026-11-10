@@ -33,6 +33,7 @@ import com.useconatus.app.push.Push
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -149,8 +150,11 @@ class SessionRepository(
         val revoked = notice != null || revokeToken()
         WorkManager.getInstance(context).cancelUniqueWork(SYNC_WORK)
         WorkManager.getInstance(context).cancelUniqueWork("sync-now")
-        withContext(Dispatchers.IO) { db.clearAllTables() }
-        store.signOut(notice ?: "The server didn't confirm the sign-out, so this phone stays listed under API tokens on the web until you revoke it there.".takeIf { !revoked })
+        // A revoked sign-in gets here from inside SyncWorker, and the cancels above stop that worker.
+        withContext(NonCancellable + Dispatchers.IO) {
+            db.clearAllTables()
+            store.signOut(notice ?: "The server didn't confirm the sign-out, so this phone stays listed under API tokens on the web until you revoke it there.".takeIf { !revoked })
+        }
     }
 
     // Offline, or on a server before 1.3.3, this fails and the token stays valid.

@@ -126,6 +126,19 @@ suspend fun ConatusDatabase.inbox(): ProjectEntity = projects().inbox()
     ?: ProjectEntity(LOCAL_ID_PREFIX + "inbox", null, "Inbox", "gray", isFavorite = false, isInbox = true, order = "", shared = false)
         .also { projects().upsert(listOf(it)) }
 
+/**
+ * The order tasks made on the phone go to the server: what to create, then what to complete. All
+ * the creates go first, parents before their sub-tasks so a sub-task's create can name its parent's
+ * server id, and each level in the phone's order, which the server's creates then keep. The server
+ * won't add a sub-task under a completed parent, so completions wait, and go sub-tasks first.
+ */
+fun uploadOrder(tasks: List<TaskEntity>): Pair<List<TaskEntity>, List<TaskEntity>> {
+    val byId = tasks.associateBy { it.id }
+    fun depth(task: TaskEntity): Int = task.parentId?.let(byId::get)?.let { depth(it) + 1 } ?: 0
+    val creates = tasks.sortedWith(compareBy({ depth(it) }, { it.order }))
+    return creates to creates.filter { it.isCompleted }.asReversed()
+}
+
 /** Every task under [id], however deep. */
 suspend fun ConatusDatabase.descendants(id: String): List<TaskEntity> {
     val out = mutableListOf<TaskEntity>()
@@ -151,6 +164,8 @@ class TaskWrites(
     private val connected: suspend () -> Boolean,
     private val today: suspend () -> LocalDate,
     private val requestSync: () -> Unit,
+    /** Clears the reminder notifications of these tasks, once the phone completes, reschedules or deletes them. */
+    private val dismissReminders: (Collection<String>) -> Unit = {},
     /** Quick add's "remind me …": the new task and the wall-clock time it read. */
     private val remind: suspend (TaskEntity, String) -> Unit = { _, _ -> },
 ) {
@@ -187,6 +202,7 @@ class TaskWrites(
         val seq = write(task, ChangeKind.Complete, buildJsonObject { put("completed", true) }, "Complete “${task.content}”", base) {
             db.tasks().upsert(listOf(done) + cascaded.map { it.copy(isCompleted = true, completedAt = now) })
         }
+        dismissReminders(cascaded.map { it.id } + task.id)
         return Completion(task.id, seq, task, cascaded.map { it.id })
     }
 
@@ -282,6 +298,7 @@ class TaskWrites(
         write(task, ChangeKind.Update, body, "Edit “${task.content}”", task.baseFor(body.keys)) {
             db.tasks().upsert(listOf(edit.applyTo(task)))
         }
+        if (edit.dueDate != null || edit.dueTime != null) dismissReminders(listOf(task.id))
     }
 
     suspend fun setLabels(task: TaskEntity, labelIds: List<String>) {
@@ -294,6 +311,7 @@ class TaskWrites(
     /** Moves a task and its sub-tasks to Trash, as the server does. */
     suspend fun delete(task: TaskEntity): Deletion {
         val descendants = db.descendants(task.id)
+        dismissReminders(descendants.map { it.id } + task.id)
         // Queued changes to tasks the server never had are dropped: nothing needs sending.
         val unsent = (listOf(task) + descendants).filter { it.id.startsWith(LOCAL_ID_PREFIX) }
         val now = Instant.now().toString()
@@ -342,7 +360,7 @@ class TaskWrites(
         val back = (listOf(task) + subtree).map { it.copy(deletedAt = null) }
         if (task.id.startsWith(LOCAL_ID_PREFIX)) {
             db.tasks().upsert(back)
-            back.forEach { create(it, insert = false) }
+            create(back, insert = false)
             return
         }
         write(task, ChangeKind.Restore, JsonObject(emptyMap()), "Restore “${task.content}”") { db.tasks().upsert(back) }
@@ -370,46 +388,45 @@ class TaskWrites(
             labelIds = parsed.labelNames.mapNotNull { name -> labels.firstOrNull { it.name.equals(name, ignoreCase = true) }?.id },
             commentCount = 0,
         )
-        create(task, insert = true)
+        create(listOf(task), insert = true)
         parsed.reminderAt?.let { remind(task, it) }
         return task
     }
 
     /** Sends the tasks made on this phone before it was connected to the server. */
-    suspend fun upload() {
-        // Parents before their sub-tasks, so a sub-task's create can name its parent's server id,
-        // and each in the phone's order, which the server's creates then keep.
-        db.tasks().unsent().sortedWith(compareBy({ it.parentId != null }, { it.order })).forEach { create(it, insert = false) }
-    }
+    suspend fun upload() = create(db.tasks().unsent(), insert = false)
 
     /** Or removes them from the phone, when they shouldn't go into the account. */
     suspend fun dropUnsent() = db.tasks().delete(db.tasks().unsent().map { it.id })
 
-    private suspend fun create(task: TaskEntity, insert: Boolean) {
+    private suspend fun create(tasks: List<TaskEntity>, insert: Boolean) {
         val queue = connected()
         db.withTransaction {
-            if (insert) db.tasks().upsert(listOf(task))
+            if (insert) db.tasks().upsert(tasks)
             if (!queue) return@withTransaction
-            val body = buildJsonObject {
-                put("projectId", task.projectId)
-                task.parentId?.let { put("parentId", it) }
-                task.sectionId?.let { put("sectionId", it) }
-                put("content", task.content)
-                if (task.description.isNotEmpty()) put("description", task.description)
-                put("priority", task.priority)
-                task.dueDate?.let { put("dueDate", it) }
-                task.dueTime?.let { put("dueTime", it) }
-                task.recurrence?.let { put("recurrence", it) }
-                task.deadlineDate?.let { put("deadlineDate", it) }
-                task.durationMinutes?.let { put("durationMinutes", it) }
+            val (creates, completes) = uploadOrder(tasks)
+            for (task in creates) {
+                val body = buildJsonObject {
+                    put("projectId", task.projectId)
+                    task.parentId?.let { put("parentId", it) }
+                    task.sectionId?.let { put("sectionId", it) }
+                    put("content", task.content)
+                    if (task.description.isNotEmpty()) put("description", task.description)
+                    put("priority", task.priority)
+                    task.dueDate?.let { put("dueDate", it) }
+                    task.dueTime?.let { put("dueTime", it) }
+                    task.recurrence?.let { put("recurrence", it) }
+                    task.deadlineDate?.let { put("deadlineDate", it) }
+                    task.durationMinutes?.let { put("durationMinutes", it) }
+                }
+                db.changes().add(PendingChange(taskId = task.id, kind = ChangeKind.Create, body = body.toString(), summary = "Add “${task.content}”", idempotencyKey = UUID.randomUUID().toString()))
+                // The server creates a task without labels and open, so those follow as changes of their own.
+                if (task.labelIds.isNotEmpty()) {
+                    val labels = buildJsonObject { put("labelIds", JsonArray(task.labelIds.map(::JsonPrimitive))) }
+                    db.changes().add(PendingChange(taskId = task.id, kind = ChangeKind.SetLabels, body = labels.toString(), summary = "Label “${task.content}”", base = task.copy(labelIds = emptyList()).baseFor(listOf("labelIds")).toString()))
+                }
             }
-            db.changes().add(PendingChange(taskId = task.id, kind = ChangeKind.Create, body = body.toString(), summary = "Add “${task.content}”", idempotencyKey = UUID.randomUUID().toString()))
-            // The server creates a task without labels and open, so those follow as changes of their own.
-            if (task.labelIds.isNotEmpty()) {
-                val labels = buildJsonObject { put("labelIds", JsonArray(task.labelIds.map(::JsonPrimitive))) }
-                db.changes().add(PendingChange(taskId = task.id, kind = ChangeKind.SetLabels, body = labels.toString(), summary = "Label “${task.content}”", base = task.copy(labelIds = emptyList()).baseFor(listOf("labelIds")).toString()))
-            }
-            if (task.isCompleted) {
+            for (task in completes) {
                 db.changes().add(PendingChange(taskId = task.id, kind = ChangeKind.Complete, body = """{"completed":true}""", summary = "Complete “${task.content}”", base = """{"completed":false}"""))
             }
         }

@@ -38,6 +38,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -108,7 +109,7 @@ fun ServerScreen(session: SessionRepository, previous: String?, onBack: () -> Un
     BackHandler(onBack = onBack)
     val scope = rememberCoroutineScope()
     var address by rememberSaveable { mutableStateOf(previous.orEmpty()) }
-    var busy by rememberSaveable { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
     var problem by rememberSaveable { mutableStateOf<String?>(null) }
     var denied by rememberSaveable { mutableStateOf(false) }
     val askLocalNetwork = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -187,7 +188,7 @@ fun SignInScreen(session: SessionRepository, serverUrl: String, notice: String?,
     val context = LocalContext.current
     var username by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
-    var busy by rememberSaveable { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
     var problem by rememberSaveable { mutableStateOf<String?>(null) }
     val host = serverUrl.toHttpUrlOrNull()?.let { url -> url.host + (if (url.port != 80 && url.port != 443) ":${url.port}" else "") } ?: serverUrl
     val submit = {

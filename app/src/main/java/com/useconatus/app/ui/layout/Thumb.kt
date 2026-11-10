@@ -67,12 +67,13 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxDefaults
+import androidx.compose.material3.SwipeToDismissBoxState
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -385,7 +386,10 @@ private fun ThumbToday(state: TodayState, onRefresh: () -> Unit, actions: RowAct
 /** Swipe right to complete, left to reschedule. Both are also TalkBack actions on the row. */
 @Composable
 private fun SwipeRow(row: TaskRow, today: LocalDate, actions: RowActions, modifier: Modifier = Modifier, showProject: Boolean = true) {
-    val swipe = rememberSwipeToDismissBoxState()
+    // Not rememberSwipeToDismissBoxState: it saves its value, so a row brought back by Undo would
+    // return dismissed and fire onDismiss again.
+    val threshold = SwipeToDismissBoxDefaults.positionalThreshold
+    val swipe = remember { SwipeToDismissBoxState(SwipeToDismissBoxValue.Settled, threshold) }
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
     // While tasks are selected, a stray swipe shouldn't act on one of them alone.

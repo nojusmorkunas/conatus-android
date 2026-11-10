@@ -114,7 +114,12 @@ class AppContainer(private val context: Context) {
     val outbox = Outbox(db)
 
     val sync = SyncRepository(db, outbox, store, ::api, dismissReminders = { reminders.dismiss(it) }) {
-        session.signOut("This phone's sign-in was revoked on the server. Sign in again.")
+        val lost = when (val unsent = db.changes().all().size) {
+            0 -> ""
+            1 -> " 1 change that hadn't been sent was lost."
+            else -> " $unsent changes that hadn't been sent were lost."
+        }
+        session.signOut("This phone's sign-in was revoked on the server.$lost Sign in again.")
     }
 
     /** Lives as long as the app's process, for work no screen owns, like keeping the reminder alarm set. */
@@ -145,7 +150,7 @@ class AppContainer(private val context: Context) {
     suspend fun zone(): ZoneId = store.timezone()?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault()
 
     /** Every write: Room first, then (with a server) the queue and a sync as soon as there's a network. */
-    val writes = TaskWrites(db, connected = { store.token() != null }, today = { todayIn(store.timezone()) }, requestSync) { task, at ->
+    val writes = TaskWrites(db, connected = { store.token() != null }, today = { todayIn(store.timezone()) }, requestSync, dismissReminders = { reminders.dismiss(it) }) { task, at ->
         localTimeToMillis(at, zone())?.let { notes.addReminder(task.id, it) }
     }
 

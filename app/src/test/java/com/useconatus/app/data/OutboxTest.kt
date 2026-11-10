@@ -9,6 +9,7 @@ import com.useconatus.app.data.sync.baseFor
 import com.useconatus.app.data.sync.merge
 import com.useconatus.app.data.sync.nextToSend
 import com.useconatus.app.data.sync.outcomeFor
+import com.useconatus.app.data.sync.uploadOrder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -43,6 +44,27 @@ class NextToSendTest {
     @Test fun `nothing to send when the queue is empty or everything failed`() {
         assertNull(nextToSend(emptyList()))
         assertNull(nextToSend(listOf(change(1, "a", failure = "No access"))))
+    }
+}
+
+class UploadOrderTest {
+    private fun task(id: String, parent: String? = null, order: String = "a", done: Boolean = true) = TaskEntity(
+        id = id, projectId = "p", sectionId = null, parentId = parent, content = id, description = "", priority = 4,
+        dueDate = null, dueTime = null, deadlineDate = null, recurrence = null, durationMinutes = null,
+        isCompleted = done, order = order, updatedAt = "", labelIds = emptyList(), commentCount = 0,
+    )
+
+    @Test fun `every create goes first, parents before sub-tasks, then completions from the bottom up`() {
+        val tasks = listOf(task("grandchild", "second", "a"), task("second", "parent", "b"), task("first", "parent", "a"), task("parent"))
+        val (creates, completes) = uploadOrder(tasks)
+        assertEquals(listOf("parent", "first", "second", "grandchild"), creates.map { it.id })
+        assertEquals(listOf("grandchild", "second", "first", "parent"), completes.map { it.id })
+    }
+
+    @Test fun `open tasks aren't completed, and a parent the upload doesn't include doesn't count`() {
+        val (creates, completes) = uploadOrder(listOf(task("child", "on server", "b"), task("open", order = "a", done = false)))
+        assertEquals(listOf("open", "child"), creates.map { it.id })
+        assertEquals(listOf("child"), completes.map { it.id })
     }
 }
 

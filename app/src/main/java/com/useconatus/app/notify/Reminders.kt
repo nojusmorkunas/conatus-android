@@ -62,7 +62,7 @@ class Reminders(private val context: Context, private val db: ConatusDatabase, p
         for (reminder in db.reminders().due(System.currentTimeMillis())) {
             val task = db.tasks().get(reminder.taskId) ?: continue
             if (notificationsAllowed(context)) {
-                post(reminder, task.id, task.content, db.projects().get(task.projectId)?.name)
+                post(reminder, task.id, task.content, task.dueDate, db.projects().get(task.projectId)?.name)
                 notes.shown(reminder)
             } else {
                 // Not shown, so the web's reminder bell should still ring for it; only the alarm moves on.
@@ -73,14 +73,14 @@ class Reminders(private val context: Context, private val db: ConatusDatabase, p
 
     /** Shown ones are tagged with their task's id, one per task, so they can be cleared when it changes. */
     @Suppress("MissingPermission") // notificationsAllowed checked it
-    private fun post(reminder: ReminderEntity, taskId: String, title: String, project: String?) {
+    private fun post(reminder: ReminderEntity, taskId: String, title: String, due: String?, project: String?) {
         val code = taskId.hashCode()
         val open = PendingIntent.getActivity(
             context, code, AppLink.intent(context, AppLink.Task(taskId)),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         fun action(action: String) = PendingIntent.getBroadcast(
-            context, code, Intent(context, ReminderReceiver::class.java).setAction(action).putExtra(EXTRA_TASK, taskId).putExtra(EXTRA_REMINDER, reminder.id),
+            context, code, Intent(context, ReminderReceiver::class.java).setAction(action).putExtra(EXTRA_TASK, taskId).putExtra(EXTRA_REMINDER, reminder.id).putExtra(EXTRA_DUE, due),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val notification = NotificationCompat.Builder(context, CHANNEL)
@@ -130,6 +130,8 @@ class Reminders(private val context: Context, private val db: ConatusDatabase, p
         /** The task a notification is for. */
         const val EXTRA_TASK = "task"
         const val EXTRA_REMINDER = "reminder"
+        /** The date the task was due when the notification went up. */
+        const val EXTRA_DUE = "due"
         const val SNOOZE_MINUTES = 15
         private const val NOTIFICATION = 1
     }
@@ -146,7 +148,9 @@ class ReminderReceiver : BroadcastReceiver() {
                 when {
                     taskId == null -> container.reminders.showDue()
                     intent.action == Reminders.ACTION_COMPLETE -> {
-                        container.db.tasks().get(taskId)?.let { container.writes.complete(it) }
+                        // A notification left up after the task moved on must not complete its next date.
+                        val due = intent.getStringExtra(Reminders.EXTRA_DUE)
+                        container.db.tasks().get(taskId)?.takeIf { !it.isCompleted && it.deletedAt == null && it.dueDate == due }?.let { container.writes.complete(it) }
                         container.reminders.dismiss(listOf(taskId))
                     }
                     intent.action == Reminders.ACTION_SNOOZE -> container.reminders.snooze(taskId, intent.getStringExtra(Reminders.EXTRA_REMINDER))
