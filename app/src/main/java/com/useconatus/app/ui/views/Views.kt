@@ -33,6 +33,7 @@ import java.time.YearMonth
 import java.time.ZoneId
 import java.time.temporal.WeekFields
 import java.util.Locale
+import com.useconatus.app.data.db.escapeLike
 
 // The views across projects: Upcoming with its calendar, search, Completed and Trash. All of them
 // read only the phone's database, so they work the same offline and without a server.
@@ -120,7 +121,7 @@ class SearchViewModel(private val container: AppContainer) : ViewModel() {
 
     val state: StateFlow<SearchState> = _query.debounce(150).map { it.trim() }.flatMapLatest { q ->
         if (q.isEmpty()) return@flatMapLatest container.days().map { SearchState(today = it) }
-        combine(container.db.tasks().observeSearch(q), container.rowLookups(), container.days()) { tasks, look, today ->
+        combine(container.db.tasks().observeSearch(escapeLike(q)), container.rowLookups(), container.days()) { tasks, look, today ->
             val (done, open) = tasks.partition { it.isCompleted }
             SearchState(
                 query = q,

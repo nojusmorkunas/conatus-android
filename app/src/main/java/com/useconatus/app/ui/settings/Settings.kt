@@ -255,8 +255,14 @@ private fun MainPage(
     }
 }
 
-private fun syncedText(lastSyncAt: Long?) =
-    lastSyncAt?.let { "Synced " + DateUtils.getRelativeTimeSpanString(it, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS) } ?: "Not synced yet"
+private fun syncedText(lastSyncAt: Long?): String {
+    val now = System.currentTimeMillis()
+    return when {
+        lastSyncAt == null -> "Not synced yet"
+        now - lastSyncAt < DateUtils.MINUTE_IN_MILLIS -> "Synced just now"
+        else -> "Synced " + DateUtils.getRelativeTimeSpanString(lastSyncAt, now, DateUtils.MINUTE_IN_MILLIS)
+    }
+}
 
 private fun String.host() = toUri().host ?: removeSuffix("/")
 

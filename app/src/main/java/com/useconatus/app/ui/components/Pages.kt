@@ -89,7 +89,7 @@ class UndoSnackbars(private val vm: TodayViewModel, private val snackbar: Snackb
 
     fun delete(id: String) = scope.launch {
         val deletion = vm.delete(id) ?: return@launch
-        if (undoTapped(if (deletion.seq == null) "Task removed" else "Moved to Trash")) vm.undo(deletion)
+        if (undoTapped("Moved to Trash")) vm.undo(deletion)
     }
 
     fun completeAll(ids: Set<String>) = scope.launch {
@@ -102,11 +102,7 @@ class UndoSnackbars(private val vm: TodayViewModel, private val snackbar: Snackb
         val deletions = vm.delete(ids)
         if (deletions.isEmpty()) return@launch
         val n = deletions.size
-        val message = when {
-            deletions.any { it.seq != null } -> if (n == 1) "Moved to Trash" else "Moved $n tasks to Trash"
-            else -> if (n == 1) "Task removed" else "$n tasks removed"
-        }
-        if (undoTapped(message)) deletions.forEach { vm.undo(it) }
+        if (undoTapped(if (n == 1) "Moved to Trash" else "Moved $n tasks to Trash")) deletions.forEach { vm.undo(it) }
     }
 }
 

@@ -152,6 +152,7 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import com.useconatus.app.ui.components.ClearSelectionOn
 import com.useconatus.app.ui.components.PullToSync
+import com.useconatus.app.ui.components.linkified
 
 // The Parity layout, called Web on screen: the web app on a phone, with a drawer like its sidebar, a +
 // button for quick add and task details on a page of their own.
@@ -590,9 +591,9 @@ private fun ParityTaskPage(
                         if (on) scope.launch { vm.complete()?.let { undo.completed(it, "Completed “${row.title}”") } } else vm.reopen()
                     }
                     Column(Modifier.weight(1f).padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(row.title, Modifier.fillMaxWidth().clickable(onClickLabel = "Edit name") { editor = Editor.Title }.heightIn(min = 48.dp).wrapContentHeight(Alignment.CenterVertically).semantics { heading() }, style = MaterialTheme.typography.titleLarge)
+                        Text(linkified(row.title), Modifier.fillMaxWidth().clickable(onClickLabel = "Edit name") { editor = Editor.Title }.heightIn(min = 48.dp).wrapContentHeight(Alignment.CenterVertically).semantics { heading() }, style = MaterialTheme.typography.titleLarge)
                         Text(
-                            row.description.ifBlank { "Description" },
+                            linkified(row.description.ifBlank { "Description" }),
                             Modifier.fillMaxWidth().clickable(onClickLabel = "Edit description") { editor = Editor.Description }.heightIn(min = 48.dp).wrapContentHeight(Alignment.CenterVertically),
                             style = MaterialTheme.typography.bodyMedium,
                             color = colors.muted,
@@ -607,7 +608,10 @@ private fun ParityTaskPage(
                         TaskCheckbox(sub.priority, sub.done, sub.title) { on ->
                             if (on) scope.launch { vm.completeSubtask(sub.id)?.let { undo.completed(it) } } else vm.reopenSubtask(sub.id)
                         }
-                        Text(sub.title, style = MaterialTheme.typography.bodyLarge, color = if (sub.done) colors.muted else Color.Unspecified)
+                        Column(Modifier.weight(1f)) {
+                            Text(sub.title, style = MaterialTheme.typography.bodyLarge, color = if (sub.done) colors.muted else Color.Unspecified)
+                            TaskDetails(sub, today, showProject = false)
+                        }
                     }
                 }
             }

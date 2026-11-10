@@ -73,6 +73,8 @@ import java.time.LocalTime
 import java.time.ZoneId
 import com.useconatus.app.ui.components.MAX_COMMENT
 import com.useconatus.app.ui.components.tooLong
+import com.useconatus.app.ui.project.ConfirmDialog
+import com.useconatus.app.ui.components.linkified
 
 // Comments and reminders in task details, shared by the three layouts.
 
@@ -249,12 +251,16 @@ fun CommentList(
     heading: Boolean = true,
 ) {
     var editing by remember { mutableStateOf<CommentEntity?>(null) }
+    var deleting by remember { mutableStateOf<CommentEntity?>(null) }
     Column(modifier) {
         if (heading) SectionHeading("Comments", comments.size.takeIf { it > 0 }, Modifier.padding(top = 8.dp))
         comments.forEach { comment ->
-            CommentItem(comment, mine = comment.userId == null || comment.userId == me, zone, today, onEdit = { editing = comment }, onDelete = { onDelete(comment) })
+            CommentItem(comment, mine = comment.userId == null || comment.userId == me, zone, today, onEdit = { editing = comment }, onDelete = { deleting = comment })
         }
         CommentField(onAdd)
+    }
+    deleting?.let { comment ->
+        ConfirmDialog("Delete this comment?", "This can't be undone.", "Delete", onConfirm = { onDelete(comment) }, onDismiss = { deleting = null })
     }
     editing?.let { comment ->
         TextDialog("Edit comment", comment.content, required = true, problem = { tooLong(it, MAX_COMMENT) }, onDismiss = { editing = null }) {
@@ -271,7 +277,7 @@ private fun CommentItem(comment: CommentEntity, mine: Boolean, zone: ZoneId, tod
     val written = runCatching { Instant.parse(comment.createdAt).toEpochMilli() }.getOrNull()
     Row(Modifier.fillMaxWidth().padding(start = 16.dp, top = 6.dp, bottom = 6.dp)) {
         Column(Modifier.weight(1f).padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(comment.content, style = MaterialTheme.typography.bodyMedium)
+            Text(linkified(comment.content), style = MaterialTheme.typography.bodyMedium)
             val edited = comment.updatedAt != comment.createdAt
             written?.let { Text(momentLabel(it, zone, today) + if (edited) ", edited" else "", style = MaterialTheme.typography.labelSmall, color = colors.muted) }
         }

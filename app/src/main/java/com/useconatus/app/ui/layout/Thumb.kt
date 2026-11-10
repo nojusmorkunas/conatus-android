@@ -180,6 +180,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.ui.platform.LocalConfiguration
 import com.useconatus.app.ui.components.ClearSelectionOn
 import com.useconatus.app.ui.components.PullToSync
+import com.useconatus.app.ui.components.linkified
 
 // The Thumb layout, called Comfortable on screen: bottom tabs, a + button above them, a large
 // collapsing title, roomy rows, swipe right to complete and left to reschedule, details in a sheet.
@@ -506,9 +507,9 @@ private fun ThumbDetailSheet(
                             Text(it.name, style = MaterialTheme.typography.bodyMedium, color = colors.muted)
                         }
                     }
-                    Text(row.title, Modifier.fillMaxWidth().clickable(onClickLabel = "Edit name") { editor = Editor.Title }.heightIn(min = 48.dp).wrapContentHeight(Alignment.CenterVertically).semantics { heading() }, style = MaterialTheme.typography.titleLarge)
+                    Text(linkified(row.title), Modifier.fillMaxWidth().clickable(onClickLabel = "Edit name") { editor = Editor.Title }.heightIn(min = 48.dp).wrapContentHeight(Alignment.CenterVertically).semantics { heading() }, style = MaterialTheme.typography.titleLarge)
                     Text(
-                        row.description.ifBlank { "Add a description" },
+                        linkified(row.description.ifBlank { "Add a description" }),
                         Modifier.fillMaxWidth().clickable(onClickLabel = "Edit description") { editor = Editor.Description }.heightIn(min = 48.dp).wrapContentHeight(Alignment.CenterVertically),
                         style = MaterialTheme.typography.bodyMedium,
                         color = colors.muted,
@@ -530,7 +531,10 @@ private fun ThumbDetailSheet(
                     TaskCheckbox(sub.priority, sub.done, sub.title) { on ->
                         if (on) scope.launch { vm.completeSubtask(sub.id)?.let(onCompleted) } else vm.reopenSubtask(sub.id)
                     }
-                    Text(sub.title, style = MaterialTheme.typography.bodyLarge, color = if (sub.done) colors.muted else Color.Unspecified)
+                    Column(Modifier.weight(1f)) {
+                        Text(sub.title, style = MaterialTheme.typography.bodyLarge, color = if (sub.done) colors.muted else Color.Unspecified)
+                        TaskDetails(sub, today, showProject = false)
+                    }
                 }
             }
             item {

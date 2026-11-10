@@ -3,6 +3,7 @@ package com.useconatus.app.data
 import com.useconatus.app.data.db.ChangeKind
 import com.useconatus.app.data.db.PendingChange
 import com.useconatus.app.data.db.TaskEntity
+import com.useconatus.app.data.db.escapeLike
 import com.useconatus.app.data.sync.SendOutcome
 import com.useconatus.app.data.sync.TaskEdit
 import com.useconatus.app.data.sync.baseFor
@@ -66,6 +67,11 @@ class UploadOrderTest {
         assertEquals(listOf("open", "child"), creates.map { it.id })
         assertEquals(listOf("child"), completes.map { it.id })
     }
+}
+
+class EscapeLikeTest {
+    @Test fun `escapes the wildcards and the escape character`() =
+        assertEquals("""50\% off a\_b c\\d""", escapeLike("""50% off a_b c\d"""))
 }
 
 class OutcomeTest {

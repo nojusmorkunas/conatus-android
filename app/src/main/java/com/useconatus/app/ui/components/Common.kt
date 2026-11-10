@@ -69,6 +69,14 @@ import com.useconatus.app.ui.today.SyncMark
 import com.useconatus.app.ui.today.TaskRow
 import java.time.LocalDate
 import java.util.Locale
+import androidx.compose.runtime.remember
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
 
 /** Opens the shared Settings screen from whichever layout is showing. */
 val LocalOpenSettings = staticCompositionLocalOf<() -> Unit> { {} }
@@ -87,6 +95,32 @@ fun tooLong(text: String, limit: Int): String? {
         over <= 0 -> null
         over == 1 -> "1 character too long. The limit is $limit."
         else -> "$over characters too long. The limit is $limit."
+    }
+}
+
+private val WEB_ADDRESS = Regex("""https?://[^\s<>"]+""", RegexOption.IGNORE_CASE)
+
+/** Where the web addresses are in [text], leaving out punctuation that ends the sentence around them. */
+fun linkRanges(text: String): List<IntRange> = WEB_ADDRESS.findAll(text).map {
+    it.range.first until it.range.first + it.value.trimEnd('.', ',', ';', ':', '!', '?', ')', ']', '\'').length
+}.toList()
+
+/** [text] with its web addresses tappable. A tap anywhere else still reaches whatever is under the text. */
+@Composable
+fun linkified(text: String): AnnotatedString {
+    val color = MaterialTheme.colorScheme.primary
+    return remember(text, color) {
+        buildAnnotatedString {
+            var at = 0
+            for (range in linkRanges(text)) {
+                append(text, at, range.first)
+                withLink(LinkAnnotation.Url(text.substring(range), TextLinkStyles(SpanStyle(color = color, textDecoration = TextDecoration.Underline)))) {
+                    append(text.substring(range))
+                }
+                at = range.last + 1
+            }
+            append(text, at, text.length)
+        }
     }
 }
 

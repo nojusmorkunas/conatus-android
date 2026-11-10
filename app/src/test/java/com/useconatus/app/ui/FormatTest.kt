@@ -3,8 +3,11 @@ package com.useconatus.app.ui
 import com.useconatus.app.ui.format.dueLabel
 import com.useconatus.app.ui.format.durationLabel
 import com.useconatus.app.ui.format.shortDueLabel
+import com.useconatus.app.ui.components.linkRanges
+import com.useconatus.app.ui.components.tooLong
 import com.useconatus.app.ui.format.timeLabel
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 import java.time.LocalDate
 import java.util.Locale
@@ -43,5 +46,19 @@ class FormatTest {
         assertEquals("20m", durationLabel(20))
         assertEquals("3h", durationLabel(180))
         assertEquals("1h 30m", durationLabel(90))
+    }
+}
+
+class InputTest {
+    @Test fun `text fits up to the limit, counted trimmed`() {
+        assertNull(tooLong("  " + "a".repeat(10) + "  ", 10))
+        assertEquals("1 character too long. The limit is 10.", tooLong("a".repeat(11), 10))
+        assertEquals("5 characters too long. The limit is 10.", tooLong("a".repeat(15), 10))
+    }
+
+    @Test fun `finds web addresses without the punctuation after them`() {
+        val text = "See https://example.com/a?b=1, or (http://x.org). Not ftp://y.org"
+        assertEquals(listOf("https://example.com/a?b=1", "http://x.org"), linkRanges(text).map(text::substring))
+        assertEquals(emptyList<IntRange>(), linkRanges("no links here"))
     }
 }

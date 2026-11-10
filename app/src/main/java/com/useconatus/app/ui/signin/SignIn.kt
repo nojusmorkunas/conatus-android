@@ -147,6 +147,7 @@ fun ServerScreen(session: SessionRepository, previous: String?, onBack: () -> Un
         if (!busy) {
             busy = true
             problem = null
+            denied = false
             if (session.needsInternetPermission()) askInternet.launch(Manifest.permission.INTERNET) else connect()
         }
     }

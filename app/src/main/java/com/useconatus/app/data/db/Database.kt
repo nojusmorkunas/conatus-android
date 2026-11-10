@@ -154,6 +154,9 @@ data class SubtaskCount(val parentId: String, val total: Int, val done: Int)
 
 data class ProjectCount(val projectId: String, val open: Int)
 
+/** [text] with LIKE's wildcards escaped, so a search for _ or % finds those characters. */
+fun escapeLike(text: String): String = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
 @Dao
 interface TaskDao {
     @Upsert
@@ -180,7 +183,7 @@ interface TaskDao {
     @Query("SELECT * FROM tasks WHERE isCompleted = 0 AND dueDate IS NOT NULL AND dueDate <= :until AND $VISIBLE ORDER BY dueDate, dueTime IS NULL, dueTime, `order`")
     fun observeScheduledBy(until: String): Flow<List<TaskEntity>>
 
-    @Query("SELECT * FROM tasks WHERE (content LIKE '%' || :query || '%' OR description LIKE '%' || :query || '%') AND $VISIBLE ORDER BY isCompleted, dueDate IS NULL, dueDate, `order` LIMIT 100")
+    @Query("SELECT * FROM tasks WHERE (content LIKE '%' || :query || '%' ESCAPE '\\' OR description LIKE '%' || :query || '%' ESCAPE '\\') AND $VISIBLE ORDER BY isCompleted, dueDate IS NULL, dueDate, `order` LIMIT 100")
     fun observeSearch(query: String): Flow<List<TaskEntity>>
 
     /** As on the web: the last 200 completions, without sub-tasks whose parent is completed too. */

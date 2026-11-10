@@ -160,6 +160,8 @@ import java.time.LocalDate
 import androidx.activity.compose.BackHandler
 import com.useconatus.app.ui.components.ClearSelectionOn
 import com.useconatus.app.ui.components.PullToSync
+import com.useconatus.app.ui.components.linkified
+import com.useconatus.app.ui.components.TaskDetails
 
 // The Index layout, called Compact on screen: every list is a tab at the bottom,
 // every task one 48dp line, a + button for adding, and details that open in place.
@@ -510,14 +512,14 @@ private fun IndexDetails(container: AppContainer, taskId: String, today: LocalDa
     if (inSheet) {
         Row(Modifier.padding(start = 4.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             TaskCheckbox(row.priority, row.done, row.title) { on -> if (on) scope.launch { vm.complete()?.let { undo.completed(it) } } else vm.reopen() }
-            Text(row.title, Modifier.clickable(onClickLabel = "Edit name") { editor = Editor.Title }.heightIn(min = 48.dp).wrapContentHeight(Alignment.CenterVertically).semantics { heading() }, style = MaterialTheme.typography.titleMedium)
+            Text(linkified(row.title), Modifier.clickable(onClickLabel = "Edit name") { editor = Editor.Title }.heightIn(min = 48.dp).wrapContentHeight(Alignment.CenterVertically).semantics { heading() }, style = MaterialTheme.typography.titleMedium)
         }
     }
     Column(Modifier.fillMaxWidth().padding(start = 48.dp, end = 16.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         detail.failure?.let { FailureNotice(it, { vm.retry(it) }, { vm.discard(it) }, Modifier.padding(bottom = 8.dp)) }
         detail.conflict?.let { c -> ConflictNotice(c, detail.task, detail.labels, today, { vm.keepMine(c) }, { vm.keepTheirs(c) }, Modifier.padding(bottom = 8.dp)) }
         Text(
-            row.description.ifBlank { "Add a description" },
+            linkified(row.description.ifBlank { "Add a description" }),
             Modifier.fillMaxWidth().clickable(onClickLabel = "Edit description") { editor = Editor.Description }.heightIn(min = 48.dp).wrapContentHeight(Alignment.CenterVertically),
             style = MaterialTheme.typography.bodySmall,
             color = colors.muted,
@@ -540,18 +542,21 @@ private fun IndexDetails(container: AppContainer, taskId: String, today: LocalDa
                     TaskCheckbox(sub.priority, sub.done, sub.title) { on ->
                         if (on) scope.launch { vm.completeSubtask(sub.id)?.let { undo.completed(it) } } else vm.reopenSubtask(sub.id)
                     }
-                    Text(
-                        sub.title,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (sub.done) colors.muted else Color.Unspecified,
-                        textDecoration = if (sub.done) TextDecoration.LineThrough else null,
-                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            sub.title,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (sub.done) colors.muted else Color.Unspecified,
+                            textDecoration = if (sub.done) TextDecoration.LineThrough else null,
+                        )
+                        TaskDetails(sub, today, showProject = false)
+                    }
                 }
             }
         }
         detail.comments.lastOrNull()?.let { latest ->
             Text("Latest comment", Modifier.padding(top = 8.dp).semantics { heading() }, style = MaterialTheme.typography.labelSmall, color = colors.muted)
-            Text(latest.content, Modifier.clickable(onClickLabel = "Show comments") { commenting = true }, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Text(linkified(latest.content), Modifier.clickable(onClickLabel = "Show comments") { commenting = true }, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
         }
         FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             IndexButton("Edit") { editor = Editor.Title }
