@@ -1,0 +1,3 @@
+Reminders now go by the phone's clock, and a stale reminder can't skip a repeating task's date. Undo after a swipe no longer completes the task again. Tasks made without a server upload properly, sub-tasks included, and a revoked sign-in signs out straight away.
+
+Pull to refresh works on Upcoming, projects, labels and Completed. Links can be tapped, you can add straight into a section, and Back returns to Today. Text over the server's limits is caught as you type.
