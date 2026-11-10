@@ -103,7 +103,7 @@ fun reminderChoices(dueDate: String?, dueTime: String?, zone: ZoneId, now: Long,
     return choices.filter { it.at > now && it.at !in existing }
 }
 
-/** "Today 9:00 AM", "Tomorrow 14:30" or "24 Oct 9:00 AM" for an instant, in the account's zone. */
+/** "Today 9:00 AM", "Tomorrow 14:30" or "24 Oct 9:00 AM" for an instant, in [zone]. */
 @Composable
 fun momentLabel(millis: Long, zone: ZoneId, today: LocalDate): String {
     val at = Instant.ofEpochMilli(millis).atZone(zone)
@@ -112,11 +112,12 @@ fun momentLabel(millis: Long, zone: ZoneId, today: LocalDate): String {
     return dueLabel(at.toLocalDate(), today, locale) + " " + timeLabel(at.toLocalTime().withSecond(0).withNano(0).toString(), use24, locale)
 }
 
-/** What the Reminders property says: the next one, and how many more. */
+/** What the Reminders property says: the next one, and how many more, by the phone's clock. */
 @Composable
-fun remindersText(reminders: List<ReminderEntity>, zone: ZoneId, today: LocalDate): String {
+fun remindersText(reminders: List<ReminderEntity>): String {
     val first = reminders.minByOrNull { it.remindAt } ?: return "No reminders"
-    val label = momentLabel(first.remindAt, zone, today)
+    val zone = ZoneId.systemDefault()
+    val label = momentLabel(first.remindAt, zone, LocalDate.now(zone))
     return if (reminders.size == 1) label else "$label and ${reminders.size - 1} more"
 }
 
@@ -164,8 +165,11 @@ fun rememberReminderAccess(): ReminderAccess {
 
 /** Lists a task's reminders with Remove, offers quick ones and a date and time, and says when notifications can't come. */
 @Composable
-fun RemindersDialog(detail: TaskDetail, today: LocalDate, onAdd: (Long) -> Unit, onDelete: (ReminderEntity) -> Unit, onDismiss: () -> Unit) {
+fun RemindersDialog(detail: TaskDetail, onAdd: (Long) -> Unit, onDelete: (ReminderEntity) -> Unit, onDismiss: () -> Unit) {
     val task = detail.task ?: return
+    // Reminders go by the phone's clock, the one the person setting them is looking at, whatever the account's time zone.
+    val zone = ZoneId.systemDefault()
+    val today = LocalDate.now(zone)
     val context = LocalContext.current
     val locale = locale()
     val use24 = DateFormat.is24HourFormat(context)
@@ -175,7 +179,7 @@ fun RemindersDialog(detail: TaskDetail, today: LocalDate, onAdd: (Long) -> Unit,
         if (!access.allowed) access.turnOn()
     }
     var picking by rememberSaveable { mutableStateOf<String?>(null) }
-    val choices = reminderChoices(task.dueDate, task.dueTime, detail.zone, System.currentTimeMillis(), detail.reminders.mapTo(HashSet()) { it.remindAt }) {
+    val choices = reminderChoices(task.dueDate, task.dueTime, zone, System.currentTimeMillis(), detail.reminders.mapTo(HashSet()) { it.remindAt }) {
         timeLabel(it.toString(), use24, locale)
     }
     val colors = LocalConatusColors.current
@@ -192,13 +196,13 @@ fun RemindersDialog(detail: TaskDetail, today: LocalDate, onAdd: (Long) -> Unit,
                 detail.reminders.forEach { reminder ->
                     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Outlined.Alarm, null, Modifier.size(18.dp), tint = colors.muted)
-                        Text(momentLabel(reminder.remindAt, detail.zone, today), Modifier.weight(1f).padding(start = 12.dp), style = MaterialTheme.typography.bodyLarge)
-                        IconButton({ onDelete(reminder) }) { Icon(Icons.Outlined.Close, "Remove the reminder for ${momentLabel(reminder.remindAt, detail.zone, today)}") }
+                        Text(momentLabel(reminder.remindAt, zone, today), Modifier.weight(1f).padding(start = 12.dp), style = MaterialTheme.typography.bodyLarge)
+                        IconButton({ onDelete(reminder) }) { Icon(Icons.Outlined.Close, "Remove the reminder for ${momentLabel(reminder.remindAt, zone, today)}") }
                     }
                 }
                 if (detail.reminders.isNotEmpty()) Spacer(Modifier.size(4.dp))
                 choices.forEach { choice ->
-                    Choice(choice.label, momentLabel(choice.at, detail.zone, today)) { add(choice.at) }
+                    Choice(choice.label, momentLabel(choice.at, zone, today)) { add(choice.at) }
                 }
                 Choice("Pick a date and time", null) { picking = "" }
             }
@@ -212,7 +216,7 @@ fun RemindersDialog(detail: TaskDetail, today: LocalDate, onAdd: (Long) -> Unit,
             DateDialog(task.dueDate ?: today.toString(), clearLabel = null, onDismiss = { picking = null }, onClear = { picking = null }) { picking = it.toString() }
         } else {
             TimeDialog(task.dueTime, onDismiss = { picking = null }, onClear = { picking = null }) { time ->
-                LocalDateTime.of(LocalDate.parse(date), LocalTime.parse(time)).atZone(detail.zone).toInstant().toEpochMilli().let(::add)
+                LocalDateTime.of(LocalDate.parse(date), LocalTime.parse(time)).atZone(zone).toInstant().toEpochMilli().let(::add)
                 picking = null
             }
         }

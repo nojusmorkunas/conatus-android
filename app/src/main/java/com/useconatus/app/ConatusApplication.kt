@@ -146,12 +146,9 @@ class AppContainer(private val context: Context) {
     /** Where a notification, shortcut, the widget or a link asked to go, until the layout showing opens it. */
     val links = MutableStateFlow<AppLink?>(null)
 
-    /** The account's time zone, or the phone's without a server. */
-    suspend fun zone(): ZoneId = store.timezone()?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault()
-
     /** Every write: Room first, then (with a server) the queue and a sync as soon as there's a network. */
     val writes = TaskWrites(db, connected = { store.token() != null }, today = { todayIn(store.timezone()) }, requestSync, dismissReminders = { reminders.dismiss(it) }) { task, at ->
-        localTimeToMillis(at, zone())?.let { notes.addReminder(task.id, it) }
+        localTimeToMillis(at, ZoneId.systemDefault())?.let { notes.addReminder(task.id, it) }
     }
 
     /** Projects, sections and labels, written the same way. */
