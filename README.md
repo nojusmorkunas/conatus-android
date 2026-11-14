@@ -44,7 +44,12 @@ Conatus for Android is the phone app for [Conatus](https://github.com/nojusmorku
 
 ## Install
 
-There's no published release yet. To try the app, build it from source and install the APK with `adb install`.
+Download an APK from the [latest release](https://github.com/nojusmorkunas/conatus-android/releases/latest) and open it on the phone. The first time, Android asks you to allow installing apps from your browser or file manager. Each release has two:
+
+- `app-play-release.apk` syncs within seconds when something changes on the web or another device, through Firebase Cloud Messaging. It needs Google Play services.
+- `app-foss-release.apk` has no Google code. It syncs when it opens, after each change and every hour.
+
+Both have the same application ID, so one replaces the other, and later releases install over either as updates. To build the app yourself, see [Build](#build).
 
 ## Build
 
