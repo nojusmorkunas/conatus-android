@@ -17,6 +17,7 @@ import com.useconatus.app.data.prefs.Session
 import com.useconatus.app.push.Push
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +28,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 import androidx.glance.appwidget.updateAll
+import com.useconatus.app.ui.today.datePrefs
 import com.useconatus.app.ui.today.days
 import com.useconatus.app.widget.TodayWidget
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -147,7 +149,7 @@ class AppContainer(private val context: Context) {
     val links = MutableStateFlow<AppLink?>(null)
 
     /** Every write: Room first, then (with a server) the queue and a sync as soon as there's a network. */
-    val writes = TaskWrites(db, connected = { store.token() != null }, today = { todayIn(store.timezone()) }, requestSync, dismissReminders = { reminders.dismiss(it) }) { task, at ->
+    val writes = TaskWrites(db, connected = { store.token() != null }, today = { todayIn(store.timezone()) }, requestSync, dateFormat = { datePrefs().first().format }, dismissReminders = { reminders.dismiss(it) }) { task, at ->
         localTimeToMillis(at, ZoneId.systemDefault())?.let { notes.addReminder(task.id, it) }
     }
 

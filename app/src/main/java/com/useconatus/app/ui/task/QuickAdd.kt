@@ -84,6 +84,7 @@ import androidx.compose.ui.unit.dp
 import com.useconatus.app.domain.TokenKind
 import com.useconatus.app.domain.parseQuickAddPreview
 import com.useconatus.app.ui.components.locale
+import com.useconatus.app.ui.format.LocalDatePrefs
 import com.useconatus.app.ui.format.dueLabel
 import com.useconatus.app.ui.format.durationLabel
 import com.useconatus.app.ui.format.timeLabel
@@ -103,13 +104,13 @@ import androidx.compose.ui.input.key.type
 import com.useconatus.app.ui.components.MAX_TITLE
 import com.useconatus.app.ui.components.tooLong
 
-/** What quick add knows about the account: the project and label names it may recognise, and today. */
-data class QuickAddContext(val projects: List<String>, val labels: List<String>, val today: LocalDate) {
+/** What quick add knows about the account: the project and label names it may recognise, today and the date format. */
+data class QuickAddContext(val projects: List<String>, val labels: List<String>, val today: LocalDate, val dateFormat: String) {
     /** The same reading the task gets when it's added, so what's highlighted is what's saved. */
-    fun preview(text: String) = parseQuickAddPreview(text, today.toString(), projects, labels)
+    fun preview(text: String) = parseQuickAddPreview(text, today.toString(), projects, labels, dateFormat)
 
     companion object {
-        fun of(state: TodayState) = QuickAddContext(state.projects.map { it.name }, state.labels.map { it.name }, state.today)
+        fun of(state: TodayState, dateFormat: String) = QuickAddContext(state.projects.map { it.name }, state.labels.map { it.name }, state.today, dateFormat)
     }
 }
 
@@ -172,7 +173,7 @@ fun QuickAddChips(text: String, context: QuickAddContext, inboxName: String, mod
     val locale = locale()
     val use24 = DateFormat.is24HourFormat(LocalContext.current)
     val dark = LocalConatusColors.current.dark
-    fun date(value: String?) = value?.let { runCatching { dueLabel(LocalDate.parse(it), context.today, locale) }.getOrNull() }
+    fun date(value: String?) = value?.let { runCatching { dueLabel(LocalDate.parse(it), context.today, locale, context.dateFormat) }.getOrNull() }
     FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Chip(Icons.Outlined.Folder, parsed.projectName ?: inboxName)
         Chip(Icons.Outlined.CalendarToday, listOfNotNull(date(parsed.dueDate), parsed.dueTime?.let { timeLabel(it, use24, locale) }).joinToString(" ").ifEmpty { "No date" })
@@ -204,7 +205,8 @@ private fun Chip(icon: ImageVector, text: String, tint: Color? = null) = Surface
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun QuickAddSheet(state: TodayState, into: String? = null, initial: String = "", onAdd: (String) -> Unit, onDismiss: () -> Unit) {
-    val context = remember(state.projects, state.labels) { QuickAddContext.of(state) }
+    val format = LocalDatePrefs.current.format
+    val context = remember(state.projects, state.labels, format) { QuickAddContext.of(state, format) }
     val inbox = into ?: state.projects.firstOrNull { it.isInbox }?.name ?: "Inbox"
     var value by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue(initial, TextRange(initial.length))) }
     val problem = tooLong(context.preview(value.text).parsed.content, MAX_TITLE)

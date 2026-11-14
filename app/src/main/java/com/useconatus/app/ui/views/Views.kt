@@ -8,9 +8,9 @@ import com.useconatus.app.data.db.ProjectEntity
 import com.useconatus.app.data.db.TaskEntity
 import com.useconatus.app.domain.calendarOccurrences
 import com.useconatus.app.domain.monthGridStart
-import com.useconatus.app.domain.weekStartOf
 import com.useconatus.app.ui.today.ProjectItem
 import com.useconatus.app.ui.today.TaskRow
+import com.useconatus.app.ui.today.datePrefs
 import com.useconatus.app.ui.today.days
 import com.useconatus.app.ui.today.rowLookups
 import com.useconatus.app.ui.today.timezone
@@ -31,8 +31,6 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
-import java.time.temporal.WeekFields
-import java.util.Locale
 import com.useconatus.app.data.db.escapeLike
 
 // The views across projects: Upcoming with its calendar, search, Completed and Trash. All of them
@@ -42,9 +40,6 @@ import com.useconatus.app.data.db.escapeLike
 const val SEARCH = "search"
 const val COMPLETED = "completed"
 const val TRASH = "trash"
-
-/** The account's first day of the week, or the phone's locale's without a server. */
-private fun AppContainer.weekStart() = store.weekStart.map { it?.let(::weekStartOf) ?: WeekFields.of(Locale.getDefault()).firstDayOfWeek }
 
 data class DayGroup(val date: LocalDate, val rows: List<TaskRow>)
 
@@ -69,7 +64,7 @@ class UpcomingViewModel(private val container: AppContainer) : ViewModel() {
 
     private data class Period(val today: LocalDate, val weekStart: DayOfWeek, val month: YearMonth, val selected: LocalDate?)
 
-    val state: StateFlow<UpcomingState> = combine(container.days(), container.weekStart(), month, selected, ::Period).flatMapLatest { p ->
+    val state: StateFlow<UpcomingState> = combine(container.days(), container.datePrefs().map { it.weekStart }, month, selected, ::Period).flatMapLatest { p ->
         val start = monthGridStart(p.month, p.weekStart)
         val end = start.plusDays(41)
         combine(

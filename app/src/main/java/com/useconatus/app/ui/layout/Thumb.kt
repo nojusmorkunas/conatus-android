@@ -147,6 +147,8 @@ import com.useconatus.app.ui.components.TaskCheckbox
 import com.useconatus.app.ui.components.TaskDetails
 import com.useconatus.app.ui.components.dueTexts
 import com.useconatus.app.ui.components.locale
+import com.useconatus.app.ui.format.LocalDatePrefs
+import com.useconatus.app.ui.format.formatDate
 import com.useconatus.app.ui.components.rememberUndoSnackbars
 import com.useconatus.app.ui.components.LocalTaskSelection
 import com.useconatus.app.ui.components.SelectionUndo
@@ -172,7 +174,7 @@ import com.useconatus.app.ui.today.TodayViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.imePadding
@@ -379,7 +381,7 @@ private fun ThumbPage(
 
 @Composable
 private fun ThumbToday(state: TodayState, onRefresh: () -> Unit, actions: RowActions, onReview: () -> Unit) {
-    val date = state.today.format(DateTimeFormatter.ofPattern("EEEE d MMMM", locale()))
+    val date = state.today.dayOfWeek.getDisplayName(TextStyle.FULL, locale()) + " " + formatDate(state.today, LocalDatePrefs.current.format)
     ThumbPage("Today", date, refreshing = state.refreshing, onRefresh = onRefresh, header = { ChangesNotice(state, onReview) }) {
         when {
             !state.loaded -> {}
@@ -545,7 +547,7 @@ private fun ThumbDetailSheet(
                 }
             }
             item {
-                CommentList(detail.comments, detail.me, detail.zone, today, vm::addComment, vm::editComment, vm::deleteComment, Modifier.background(sheetColor()))
+                CommentList(detail.comments, detail.me, detail.zone, vm::addComment, vm::editComment, vm::deleteComment, Modifier.background(sheetColor()))
             }
             item {
                 Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {

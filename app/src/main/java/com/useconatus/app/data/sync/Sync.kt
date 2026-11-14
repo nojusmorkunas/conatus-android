@@ -200,7 +200,7 @@ class SyncRepository(
     private suspend fun run() {
         val api = api()
         val context = api.context()
-        store.updateUser(context.user.id, context.user.username, context.user.name, context.user.timezone, context.user.weekStart, context.user.emailReminders, context.user.emailRemindersAvailable)
+        store.updateUser(context.user.id, context.user.username, context.user.name, context.user.timezone, context.user.weekStart, context.user.dateFormat, context.user.emailReminders, context.user.emailRemindersAvailable)
         val projects = api.projects()
         val sections = api.sections()
         val labels = api.labels()

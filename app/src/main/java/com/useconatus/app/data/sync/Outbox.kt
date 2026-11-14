@@ -164,6 +164,8 @@ class TaskWrites(
     private val connected: suspend () -> Boolean,
     private val today: suspend () -> LocalDate,
     private val requestSync: () -> Unit,
+    /** The account's date format, which decides how quick add reads numeric dates. */
+    private val dateFormat: suspend () -> String? = { null },
     /** Clears the reminder notifications of these tasks, once the phone completes, reschedules or deletes them. */
     private val dismissReminders: (Collection<String>) -> Unit = {},
     /** Quick add's "remind me …": the new task and the wall-clock time it read. */
@@ -373,7 +375,7 @@ class TaskWrites(
     suspend fun quickAdd(text: String, projectId: String? = null, sectionId: String? = null, parentId: String? = null): TaskEntity {
         val projects = db.projects().all()
         val labels = db.labels().all()
-        val parsed = parseQuickAdd(text, today().toString(), projects.map { it.name }, labels.map { it.name })
+        val parsed = parseQuickAdd(text, today().toString(), projects.map { it.name }, labels.map { it.name }, dateFormat())
         val named = parsed.projectName?.let { name -> projects.firstOrNull { it.name.equals(name, ignoreCase = true) } }
         val project = named ?: projects.firstOrNull { it.id == projectId } ?: db.inbox()
         // Naming another project takes the task out of the section or parent it was added from.

@@ -66,11 +66,15 @@ import com.useconatus.app.ui.components.ListMessage
 import com.useconatus.app.ui.components.projectIcon
 import com.useconatus.app.ui.components.SectionHeading
 import com.useconatus.app.ui.components.locale
+import com.useconatus.app.ui.format.LocalDatePrefs
 import com.useconatus.app.ui.format.dueLabel
+import com.useconatus.app.ui.format.formatDate
+import com.useconatus.app.ui.format.pastDateLabel
 import com.useconatus.app.ui.theme.Hue
 import com.useconatus.app.ui.theme.LocalConatusColors
 import com.useconatus.app.ui.today.ProjectItem
 import com.useconatus.app.ui.today.TaskRow
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -82,16 +86,20 @@ import java.time.format.TextStyle
 /** One task row in the layout's own style. */
 typealias RowSlot = @Composable LazyItemScope.(TaskRow, Modifier) -> Unit
 
-/** A date's heading: "Today", "Tomorrow", a weekday or a date, with the full date beside it when that adds anything. */
+/**
+ * A date's heading: "Today", "Tomorrow", a weekday or a date, with the date beside it when that adds anything.
+ * [past] days, such as completions, say "Yesterday" and name the weekdays before today.
+ */
 @Composable
-fun DayHeading(date: LocalDate, today: LocalDate, count: Int?, modifier: Modifier = Modifier, rule: Boolean = false) {
+fun DayHeading(date: LocalDate, today: LocalDate, count: Int?, modifier: Modifier = Modifier, rule: Boolean = false, past: Boolean = false) {
     val locale = locale()
-    val label = dueLabel(date, today, locale)
-    val full = date.format(DateTimeFormatter.ofPattern("EEEE d MMMM", locale))
+    val format = LocalDatePrefs.current.format
+    val label = if (past) pastDateLabel(date, today, locale, format) else dueLabel(date, today, locale, format)
+    val full = formatDate(date, format)
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         SectionHeading(label, count, Modifier.weight(1f), rule = rule)
         if (full != label) {
-            Text(full.removePrefix("$label "), Modifier.padding(end = 16.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            Text(full, Modifier.padding(end = 16.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         }
     }
 }
@@ -127,7 +135,7 @@ fun LazyListScope.upcomingItems(state: UpcomingState, rule: Boolean = false, row
 
 /** Upcoming as a calendar: the month grid, then the tasks on the date picked, repeats included. */
 fun LazyListScope.calendarItems(state: UpcomingState, vm: UpcomingViewModel, rule: Boolean = false, row: RowSlot) {
-    item("grid") { MonthGrid(state, vm::select, vm::showMonth) }
+    item("grid") { MonthGrid(state.month, state.weekStart, state.today, state.selected, state.counts, vm::select, vm::showMonth) }
     item("day") { DayHeading(state.selected, state.today, state.selectedRows.size, Modifier.padding(top = 8.dp), rule) }
     if (state.loaded && state.selectedRows.isEmpty()) item("free") { ListMessage("Nothing on this day.", Modifier.heightIn(min = 120.dp)) }
     items(state.selectedRows, key = { "c-" + it.id }) { row(it, Modifier.animateItem()) }
@@ -135,20 +143,20 @@ fun LazyListScope.calendarItems(state: UpcomingState, vm: UpcomingViewModel, rul
 
 /** A month as weeks, with a dot under each date that has tasks: one to three, by how many. */
 @Composable
-fun MonthGrid(state: UpcomingState, onPick: (LocalDate) -> Unit, onMonth: (YearMonth) -> Unit) {
+fun MonthGrid(month: YearMonth, weekStart: DayOfWeek, today: LocalDate, picked: LocalDate?, counts: Map<LocalDate, Int>, onPick: (LocalDate) -> Unit, onMonth: (YearMonth) -> Unit) {
     val locale = locale()
-    val start = monthGridStart(state.month, state.weekStart)
+    val start = monthGridStart(month, weekStart)
     val colors = LocalConatusColors.current
     Column(Modifier.padding(horizontal = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton({ onMonth(state.month.minusMonths(1)) }) { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, "Previous month") }
+            IconButton({ onMonth(month.minusMonths(1)) }) { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, "Previous month") }
             Text(
-                state.month.format(DateTimeFormatter.ofPattern("MMMM yyyy", locale)),
+                month.format(DateTimeFormatter.ofPattern("MMMM yyyy", locale)),
                 Modifier.weight(1f).semantics { heading() },
                 style = MaterialTheme.typography.titleMedium,
                 textAlign = TextAlign.Center,
             )
-            IconButton({ onMonth(state.month.plusMonths(1)) }) { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, "Next month") }
+            IconButton({ onMonth(month.plusMonths(1)) }) { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, "Next month") }
         }
         Row {
             repeat(7) { i ->
@@ -165,10 +173,10 @@ fun MonthGrid(state: UpcomingState, onPick: (LocalDate) -> Unit, onMonth: (YearM
             Row {
                 repeat(7) { d ->
                     val date = start.plusDays((week * 7 + d).toLong())
-                    val count = state.counts[date] ?: 0
-                    val chosen = date == state.selected
-                    val inMonth = YearMonth.from(date) == state.month
-                    val spoken = date.format(DateTimeFormatter.ofPattern("EEEE d MMMM", locale)) + when (count) {
+                    val count = counts[date] ?: 0
+                    val chosen = date == picked
+                    val inMonth = YearMonth.from(date) == month
+                    val spoken = date.format(DateTimeFormatter.ofPattern("EEEE d MMMM yyyy", locale)) + when (count) {
                         0 -> ""
                         1 -> ", 1 task"
                         else -> ", $count tasks"
@@ -184,14 +192,14 @@ fun MonthGrid(state: UpcomingState, onPick: (LocalDate) -> Unit, onMonth: (YearM
                         Box(
                             Modifier.size(32.dp)
                                 .then(if (chosen) Modifier.background(MaterialTheme.colorScheme.primary, CircleShape) else Modifier)
-                                .then(if (date == state.today && !chosen) Modifier.border(1.dp, MaterialTheme.colorScheme.outline, CircleShape) else Modifier),
+                                .then(if (date == today && !chosen) Modifier.border(1.dp, MaterialTheme.colorScheme.outline, CircleShape) else Modifier),
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
                                 "${date.dayOfMonth}",
                                 Modifier.clearAndSetSemantics {},
                                 style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = if (date == state.today) FontWeight.SemiBold else null,
+                                fontWeight = if (date == today) FontWeight.SemiBold else null,
                                 color = when {
                                     chosen -> MaterialTheme.colorScheme.onPrimary
                                     inMonth -> MaterialTheme.colorScheme.onSurface
@@ -273,7 +281,7 @@ private fun ResultLine(name: String, icon: ImageVector, tint: Color, onClick: ()
 fun LazyListScope.completedItems(state: CompletedState, rule: Boolean = false, row: RowSlot) {
     if (state.loaded && state.days.isEmpty()) item("empty") { ListMessage("Nothing completed yet.", Modifier.heightIn(min = 320.dp)) }
     state.days.forEach { day ->
-        item("d-" + day.date) { DayHeading(day.date, state.today, day.rows.size, Modifier.padding(top = 6.dp), rule) }
+        item("d-" + day.date) { DayHeading(day.date, state.today, day.rows.size, Modifier.padding(top = 6.dp), rule, past = true) }
         items(day.rows, key = { "${day.date}-${it.id}" }) { row(it, Modifier.animateItem()) }
     }
 }

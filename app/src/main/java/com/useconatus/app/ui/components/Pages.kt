@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.useconatus.app.data.db.TaskEntity
+import com.useconatus.app.ui.format.LocalDatePrefs
 import com.useconatus.app.ui.format.dueLabel
 import com.useconatus.app.data.sync.Completion
 import com.useconatus.app.ui.today.TodayState
@@ -65,13 +66,14 @@ fun PullToSync(vm: TodayViewModel, modifier: Modifier = Modifier, content: @Comp
 @Composable
 fun AddedMessages(added: Flow<TaskEntity>, state: TodayState, snackbar: SnackbarHostState) {
     val locale = locale()
+    val format = LocalDatePrefs.current.format
     val current by rememberUpdatedState(state)
     LaunchedEffect(added) {
         added.collect { task ->
             val state = current
             if (task.dueDate != null && task.dueDate <= state.today.toString()) return@collect
             val project = state.projects.firstOrNull { it.id == task.projectId }?.name ?: "Inbox"
-            val due = task.dueDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }?.let { " for ${dueLabel(it, state.today, locale)}" }.orEmpty()
+            val due = task.dueDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }?.let { " for ${dueLabel(it, state.today, locale, format)}" }.orEmpty()
             snackbar.showSnackbar("Added “${task.content}” to $project$due")
         }
     }

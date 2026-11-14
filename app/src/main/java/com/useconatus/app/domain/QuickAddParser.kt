@@ -82,14 +82,17 @@ private fun relative(words: List<String>, i: Int, today: String): DateMatch? {
     return null
 }
 
-/** Calendar dates only; a time such as {noon} must never turn into a date. */
-fun matchDate(source: List<String>, i: Int, today: String): DateMatch? {
+/**
+ * Calendar dates only; a time such as {noon} must never turn into a date. [numericMonthFirst] reads
+ * numeric dates as month/day, for accounts using the MM/dd/yyyy format.
+ */
+fun matchDate(source: List<String>, i: Int, today: String, numericMonthFirst: Boolean = false): DateMatch? {
     val words = source.map { cleanWord(it).lowercase() }
     val w = words.at(i)
     if (w.isEmpty()) return null
     if (w == "on") {
         if (words.at(i + 1) == "on") return null
-        return matchDate(words, i + 1, today)?.let { it.copy(length = it.length + 1) }
+        return matchDate(words, i + 1, today, numericMonthFirst)?.let { it.copy(length = it.length + 1) }
     }
     if (w == "the") {
         // "the 15th" and "on the first" mean the next such day of a month.
@@ -126,8 +129,12 @@ fun matchDate(source: List<String>, i: Int, today: String): DateMatch? {
     }
     relative(words, i, today)?.let { return it }
     Regex("^(\\d{4})-(\\d{2})-(\\d{2})$").find(w)?.let { return result(validDate(it.groupValues[1].toInt(), it.groupValues[2].toInt(), it.groupValues[3].toInt()), 1) }
-    // Numeric dates are day first.
-    Regex("^(\\d{1,2})[/.](\\d{1,2})$").find(w)?.let { return result(nextCalendarDate(today, it.groupValues[2].toInt(), it.groupValues[1].toInt()), 1) }
+    // Numeric dates follow the account's day/month order, with an optional year.
+    Regex("^(\\d{1,2})[/.](\\d{1,2})(?:[/.](\\d{4}))?$").find(w)?.let {
+        val (first, second) = it.groupValues[1].toInt() to it.groupValues[2].toInt()
+        val year = it.groupValues[3].toIntOrNull()
+        return result(if (numericMonthFirst) nextCalendarDate(today, first, second, year) else nextCalendarDate(today, second, first, year), 1)
+    }
     val monthFirst = monthIndex(w)
     val dayWord = if (monthFirst >= 0) words.at(i + 1) else w
     val month = if (monthFirst >= 0) monthFirst else monthIndex(words.at(i + 1))
@@ -209,18 +216,18 @@ private val DAY_PARTS = mapOf("morning" to "09:00", "afternoon" to "15:00", "eve
 private data class Span(val value: String?, val length: Int)
 private data class DayPart(val time: String, val length: Int, val today: Boolean)
 
-private fun matchDeadline(words: List<String>, i: Int, today: String): Span? {
+private fun matchDeadline(words: List<String>, i: Int, today: String, monthFirst: Boolean): Span? {
     if (words[i].startsWith("{")) {
         val end = (i until words.size).firstOrNull { words[it].endsWith("}") } ?: -1
         val length = (if (end < 0) words.size else end + 1) - i
         val joined = words.subList(i, i + length).joinToString(" ")
         val inner = (if (joined.length >= 2) joined.substring(1, joined.length - 1) else "").trim().split(Regex("\\s+"))
-        val match = if (end >= 0) matchDate(inner, 0, today) else null
+        val match = if (end >= 0) matchDate(inner, 0, today, monthFirst) else null
         return Span(if (match != null && match.length == inner.size) match.date else null, length)
     }
     if (words[i] != "deadline") return null
     val skip = if (words.at(i + 1) == "on" || words.at(i + 1) == "by") 2 else 1
-    val match = matchDate(words, i + skip, today) ?: return null
+    val match = matchDate(words, i + skip, today, monthFirst) ?: return null
     return Span(match.date, skip + match.length)
 }
 
@@ -229,7 +236,7 @@ private val SCHEDULE_WORD = Regex("^(every!?|other|the|last|of|and|day|days|week
 
 // Try the whole repeat before date matching sees a weekday inside it. Keep unfinished or
 // unsupported schedules as text instead of saving a shorter, different one.
-private fun matchRecurrence(source: List<String>, words: List<String>, i: Int, today: String): Span? {
+private fun matchRecurrence(source: List<String>, words: List<String>, i: Int, today: String, monthFirst: Boolean): Span? {
     val w = words[i]
     val head = Regex("^every!?$").matches(w)
     val alias = Regex("^(daily|weekly|monthly|yearly|annually|fortnightly)$").matches(w)
@@ -248,7 +255,7 @@ private fun matchRecurrence(source: List<String>, words: List<String>, i: Int, t
         }
         val next = words.at(i + length)
         val continuation = next == "and" || next == "of" || weekdayIndex(next) >= 0 ||
-            (source[i + length - 1].endsWith(",") && next.isNotEmpty() && !Regex("^(at|for|due|deadline|p[1-4]|#|@)").containsMatchIn(next) && matchDate(words, i + length, today) == null)
+            (source[i + length - 1].endsWith(",") && next.isNotEmpty() && !Regex("^(at|for|due|deadline|p[1-4]|#|@)").containsMatchIn(next) && matchDate(words, i + length, today, monthFirst) == null)
         if (!continuation) return Span(rule, length)
         break
     }
@@ -273,14 +280,14 @@ private fun dayPart(words: List<String>, i: Int, afterDate: Boolean): DayPart? {
     return if (afterDate && DAY_PARTS.containsKey(words.at(i))) DayPart(DAY_PARTS.getValue(words.at(i)), 1, false) else null
 }
 
-private fun matchReminder(words: List<String>, i: Int, today: String): Span? {
+private fun matchReminder(words: List<String>, i: Int, today: String, monthFirst: Boolean): Span? {
     if (words.at(i) != "remind" || words.at(i + 1) != "me") return null
     var cursor = i + 2
     var date: String? = null
     var time: String? = null
     var defaultTime = false
     for (part in 0 until 3) {
-        val dateMatch = if (date != null) null else matchDate(words, cursor, today)
+        val dateMatch = if (date != null) null else matchDate(words, cursor, today, monthFirst)
         if (dateMatch != null) {
             date = dateMatch.date
             cursor += dateMatch.length
@@ -311,17 +318,19 @@ private fun matchReminder(words: List<String>, i: Int, today: String): Span? {
     return Span((date ?: today) + "T" + (time ?: "09:00"), cursor - i)
 }
 
-fun parseQuickAdd(input: String, today: String, projectNames: List<String>? = null, labelNames: List<String>? = null): QuickAddParse =
-    parseQuickAddPreview(input, today, projectNames, labelNames).parsed
+fun parseQuickAdd(input: String, today: String, projectNames: List<String>? = null, labelNames: List<String>? = null, dateFormat: String? = null): QuickAddParse =
+    parseQuickAddPreview(input, today, projectNames, labelNames, dateFormat).parsed
 
 /**
  * One pass gives both the fields to save and the exact ranges to highlight. Without
  * [projectNames] or [labelNames], any #word or @word counts, as on the server's API.
+ * The account's [dateFormat] decides whether numeric dates are month-first (MM/dd/yyyy) or day-first.
  */
-fun parseQuickAddPreview(input: String, today: String, projectNames: List<String>? = null, labelNames: List<String>? = null): QuickAddResult {
+fun parseQuickAddPreview(input: String, today: String, projectNames: List<String>? = null, labelNames: List<String>? = null, dateFormat: String? = null): QuickAddResult {
     val matches = Regex("\\S+").findAll(input).toList()
     val source = matches.map { it.value }
     val words = source.map { cleanWord(it).lowercase() }
+    val monthFirst = dateFormat == "MM/dd/yyyy"
     val consumed = mutableSetOf<Int>()
     val tokens = mutableListOf<QuickAddToken>()
     var parsed = QuickAddParse(content = "")
@@ -349,7 +358,7 @@ fun parseQuickAddPreview(input: String, today: String, projectNames: List<String
     var i = if (leadingReminder) 3 else 0
     while (i < words.size) {
         val w = words[i]
-        val deadline = matchDeadline(words, i, today)
+        val deadline = matchDeadline(words, i, today, monthFirst)
         if (deadline != null) {
             if (parsed.deadlineDate == null && deadline.value != null) {
                 parsed = parsed.copy(deadlineDate = deadline.value)
@@ -358,7 +367,7 @@ fun parseQuickAddPreview(input: String, today: String, projectNames: List<String
             i += deadline.length
             continue
         }
-        val reminder = matchReminder(words, i, today)
+        val reminder = matchReminder(words, i, today, monthFirst)
         if (reminder != null) {
             if (parsed.reminderAt == null && reminder.value != null) {
                 parsed = parsed.copy(reminderAt = reminder.value)
@@ -411,7 +420,7 @@ fun parseQuickAddPreview(input: String, today: String, projectNames: List<String
             i++
             continue
         }
-        val repeat = matchRecurrence(source, words, i, today)
+        val repeat = matchRecurrence(source, words, i, today, monthFirst)
         if (repeat != null) {
             if (parsed.dueDate == null && repeat.value != null) {
                 parsed = parsed.copy(recurrence = repeat.value, dueDate = firstOccurrence(repeat.value, today))
@@ -449,7 +458,7 @@ fun parseQuickAddPreview(input: String, today: String, projectNames: List<String
                 "by" -> 1
                 else -> 0
             }
-            val match = matchDate(words, i + skip, today)
+            val match = matchDate(words, i + skip, today, monthFirst)
             if (match != null) {
                 parsed = parsed.copy(dueDate = match.date)
                 consume(i, skip + match.length, TokenKind.Date, match.date)

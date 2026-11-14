@@ -184,7 +184,7 @@ interface ConatusApi {
 
 @Serializable data class ContextDto(val today: String, val user: UserDto)
 
-/** [weekStart] is 0 for Sunday to 6 for Saturday. */
+/** [weekStart] is 0 for Sunday to 6 for Saturday. [dateFormat] is yyyy-MM-dd, MM/dd/yyyy, dd/MM/yyyy or dd.MM.yyyy. */
 @Serializable
 data class UserDto(
     val id: String,
@@ -192,6 +192,7 @@ data class UserDto(
     val name: String? = null,
     val timezone: String,
     val weekStart: Int? = null,
+    val dateFormat: String? = null,
     /** Whether the server emails reminders as well. */
     val emailReminders: Boolean? = null,
     /** False when the server can't email reminders: no SMTP, or no address. Older servers don't say. */
