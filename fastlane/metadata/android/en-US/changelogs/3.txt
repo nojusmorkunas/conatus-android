@@ -1,0 +1,1 @@
+Dates follow your account's date format in lists, task details, quick add and the widget, and the date picker and Upcoming's month view start their weeks on your first day of week. Quick add reads 3/9 month-first if you use MM/dd/yyyy and accepts a year.
