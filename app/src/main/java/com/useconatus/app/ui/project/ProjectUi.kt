@@ -314,7 +314,7 @@ fun ListActions(state: ListState, vm: ListViewModel, onGone: () -> Unit) {
         val comments by vm.comments.collectAsStateWithLifecycle()
         val me by vm.me.collectAsStateWithLifecycle()
         val zone by vm.zone.collectAsStateWithLifecycle()
-        CommentsSheet("Comments on ${project.name}", comments, me, zone, state.today, vm::addComment, vm::editComment, vm::deleteComment) { commenting = false }
+        CommentsSheet("Comments on ${project.name}", comments, me, zone, vm::addComment, vm::editComment, vm::deleteComment) { commenting = false }
     }
     if (deleting && project != null) {
         ConfirmDialog(

@@ -8,13 +8,17 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.core.content.pm.ShortcutManagerCompat
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.useconatus.app.data.prefs.ThemeChoice
+import com.useconatus.app.ui.format.LocalDatePrefs
 import com.useconatus.app.ui.task.QuickAddSheet
 import com.useconatus.app.ui.theme.ConatusTheme
 import com.useconatus.app.ui.today.TodayState
+import com.useconatus.app.ui.today.datePrefs
 import com.useconatus.app.ui.today.projectItems
 import kotlinx.coroutines.launch
 
@@ -36,21 +40,25 @@ class QuickAddActivity : ComponentActivity() {
             val appearance by container.store.appearance.collectAsStateWithLifecycle(initialValue = null)
             val projects by container.projectItems().collectAsStateWithLifecycle(initialValue = emptyList())
             val labels by container.db.labels().observeAll().collectAsStateWithLifecycle(initialValue = emptyList())
+            val dates by remember { container.datePrefs() }.collectAsStateWithLifecycle(initialValue = null)
             val scope = rememberCoroutineScope()
             val theme = appearance?.theme ?: return@setContent
+            val prefs = dates ?: return@setContent
             val dark = when (theme) {
                 ThemeChoice.Light -> false
                 ThemeChoice.Dark -> true
                 ThemeChoice.System -> isSystemInDarkTheme()
             }
             ConatusTheme(dark) {
-                QuickAddSheet(TodayState(projects = projects, labels = labels), initial = shared, onAdd = { text ->
-                    scope.launch {
-                        val task = container.writes.quickAdd(text.trim())
-                        Toast.makeText(applicationContext, "Added “${task.content}”", Toast.LENGTH_SHORT).show()
-                        finish()
-                    }
-                }, onDismiss = ::finish)
+                CompositionLocalProvider(LocalDatePrefs provides prefs) {
+                    QuickAddSheet(TodayState(projects = projects, labels = labels), initial = shared, onAdd = { text ->
+                        scope.launch {
+                            val task = container.writes.quickAdd(text.trim())
+                            Toast.makeText(applicationContext, "Added “${task.content}”", Toast.LENGTH_SHORT).show()
+                            finish()
+                        }
+                    }, onDismiss = ::finish)
+                }
             }
         }
     }

@@ -42,6 +42,8 @@ class QuickAddParserTest {
         "x 5.3" to p("x").copy(dueDate = "2027-03-05"),
         "x 29/2" to p("x 29/2"),
         "x 32/1" to p("x 32/1"),
+        "x 30.11.2026" to p("x").copy(dueDate = "2026-11-30"), // with a year
+        "x 1/7/2026" to p("x").copy(dueDate = "2026-07-01"), // a year keeps a past date
         "water plants every day" to p("water plants").copy(dueDate = "2026-07-14", recurrence = "every day"),
         "review every 2 weeks" to p("review").copy(dueDate = "2026-07-14", recurrence = "every 2 weeks"),
         "standup every Monday" to p("standup").copy(dueDate = "2026-07-20", recurrence = "every monday"),
@@ -90,6 +92,13 @@ class QuickAddParserTest {
 
     @Test fun `reads every case the server reads`() {
         for ((input, expected) in cases) assertEquals(input, expected, parseQuickAdd(input, TODAY))
+    }
+
+    @Test fun `numeric dates read month-first for the MM-dd-yyyy format`() {
+        assertEquals("2027-03-09", parseQuickAdd("x 3/9", TODAY, dateFormat = "MM/dd/yyyy").dueDate)
+        assertEquals("2026-11-30", parseQuickAdd("x 11/30/2026", TODAY, dateFormat = "MM/dd/yyyy").dueDate)
+        assertEquals("2026-11-30", parseQuickAdd("x deadline 11/30", TODAY, dateFormat = "MM/dd/yyyy").deadlineDate)
+        assertEquals("2026-09-03", parseQuickAdd("x 3/9", TODAY, dateFormat = "dd.MM.yyyy").dueDate)
     }
 
     @Test fun `weekdays roll over from another day`() {

@@ -15,6 +15,9 @@ import com.useconatus.app.data.sync.Deletion
 import com.useconatus.app.data.sync.TaskEdit
 import com.useconatus.app.domain.groupToday
 import com.useconatus.app.domain.todayIn
+import com.useconatus.app.domain.weekStartOf
+import com.useconatus.app.ui.format.DatePrefs
+import com.useconatus.app.ui.format.dateFormatFor
 import com.useconatus.app.ui.theme.Hue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -35,6 +38,8 @@ import java.time.Duration
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import java.time.temporal.WeekFields
+import java.util.Locale
 import kotlinx.coroutines.async
 
 /** A project as navigation shows it: drawer, tabs and the project shown in a task row. */
@@ -153,6 +158,12 @@ internal fun AppContainer.projectItems(): Flow<List<ProjectItem>> =
 
 /** The account's time zone, or null without a server (the phone's applies). */
 internal fun AppContainer.timezone(): Flow<String?> = store.session.map { (it as? Session.SignedIn)?.timezone }.distinctUntilChanged()
+
+/** The account's date format and first day of the week, or the phone's locale's without a server. */
+internal fun AppContainer.datePrefs(): Flow<DatePrefs> = combine(store.dateFormat, store.weekStart) { format, week ->
+    val locale = Locale.getDefault()
+    DatePrefs(dateFormatFor(format, locale), week?.let(::weekStartOf) ?: WeekFields.of(locale).firstDayOfWeek)
+}.distinctUntilChanged()
 
 /** The account's date (the phone's without a server), moving on at midnight even if the app stays open. */
 @OptIn(ExperimentalCoroutinesApi::class)

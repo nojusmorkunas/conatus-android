@@ -38,8 +38,6 @@ import androidx.compose.material.icons.outlined.Sell
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -52,7 +50,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
-import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
@@ -85,6 +82,8 @@ import com.useconatus.app.domain.parseRecurrence
 import com.useconatus.app.data.sync.TaskEdit
 import com.useconatus.app.ui.components.ProjectIcon
 import com.useconatus.app.ui.components.locale
+import com.useconatus.app.ui.format.LocalDatePrefs
+import com.useconatus.app.ui.format.deadlineLabel
 import com.useconatus.app.ui.format.dueColor
 import com.useconatus.app.ui.format.dueLabel
 import com.useconatus.app.ui.format.durationLabel
@@ -96,10 +95,10 @@ import com.useconatus.app.ui.theme.sheetColor
 import com.useconatus.app.ui.today.ProjectItem
 import com.useconatus.app.ui.today.TodayState
 import com.useconatus.app.ui.today.inTreeOrder
-import java.time.Instant
+import com.useconatus.app.ui.views.MonthGrid
 import java.time.LocalDate
 import java.time.LocalTime
-import java.time.ZoneOffset
+import java.time.YearMonth
 import java.util.Locale
 import com.useconatus.app.ui.components.MAX_TITLE
 import com.useconatus.app.ui.components.MAX_DESCRIPTION
@@ -120,17 +119,18 @@ fun taskProperties(detail: TaskDetail, today: LocalDate): List<Property> {
     val colors = LocalConatusColors.current
     val locale = locale()
     val use24 = DateFormat.is24HourFormat(LocalContext.current)
+    val format = LocalDatePrefs.current.format
     val project = row.project
     return listOfNotNull(
         Property(
             "Date",
-            row.due?.let { dueLabel(it, today, locale) } ?: "No date",
+            row.due?.let { dueLabel(it, today, locale, format) } ?: "No date",
             Icons.Outlined.CalendarToday, Editor.Date,
             row.due?.let { dueColor(it, today, colors) }, set = row.due != null,
         ),
         Property("Time", row.time?.let { timeLabel(it, use24, locale) } ?: "No time", Icons.Outlined.Schedule, Editor.Time, set = row.time != null),
         Property("Repeats", task.recurrence?.replaceFirstChar(Char::uppercase) ?: "Doesn't repeat", Icons.Outlined.Repeat, Editor.Repeat, set = task.recurrence != null),
-        Property("Deadline", row.deadline?.let { dueLabel(it, today, locale) } ?: "No deadline", Icons.Outlined.OutlinedFlag, Editor.Deadline, set = row.deadline != null),
+        Property("Deadline", row.deadline?.let { deadlineLabel(it, today, locale, format) } ?: "No deadline", Icons.Outlined.OutlinedFlag, Editor.Deadline, set = row.deadline != null),
         Property("Duration", row.minutes?.let(::durationLabel) ?: "No duration", Icons.Outlined.Timer, Editor.Duration, set = row.minutes != null),
         Property("Priority", "Priority ${row.priority}", Icons.Outlined.Flag, Editor.Priority, priorityColor(row.priority, colors.dark).takeIf { row.priority < 4 }),
         Property("Labels", row.labels.joinToString(", ") { it.name }.ifEmpty { "No labels" }, Icons.Outlined.Sell, Editor.Labels, set = row.labels.isNotEmpty()),
@@ -276,26 +276,20 @@ internal fun TextDialog(
     )
 }
 
+/** A month to pick a date from, a tap picking it. Weeks start on the account's first day, which Android's own picker can't do. */
 @Composable
 internal fun DateDialog(initial: String?, clearLabel: String?, onDismiss: () -> Unit, onClear: () -> Unit, onPick: (LocalDate) -> Unit) {
-    // The picker works in UTC milliseconds; a date at UTC midnight round-trips exactly.
-    val state = rememberDatePickerState(
-        initialSelectedDateMillis = initial?.let { runCatching { LocalDate.parse(it).atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli() }.getOrNull() },
-    )
-    DatePickerDialog(
+    val picked = initial?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+    // The phone's own day, as Android's picker marked it.
+    val today = LocalDate.now()
+    var month by rememberSaveable { mutableStateOf(YearMonth.from(picked ?: today)) }
+    AlertDialog(
         onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton({ state.selectedDateMillis?.let { onPick(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate()) } }, enabled = state.selectedDateMillis != null) {
-                Text("Set")
-            }
-        },
-        dismissButton = {
-            Row {
-                clearLabel?.let { TextButton(onClear) { Text(it) } }
-                TextButton(onDismiss) { Text("Cancel") }
-            }
-        },
-    ) { DatePicker(state) }
+        text = { MonthGrid(month, LocalDatePrefs.current.weekStart, today, picked, emptyMap(), onPick) { month = it } },
+        confirmButton = { TextButton(onDismiss) { Text("Cancel") } },
+        dismissButton = clearLabel?.let { { TextButton(onClear) { Text(it) } } },
+        shape = MaterialTheme.shapes.large,
+    )
 }
 
 @Composable
@@ -433,7 +427,8 @@ private val FIELD_NAMES = mapOf(
 private fun fieldText(task: TaskEntity, field: String, labels: List<LabelEntity>, today: LocalDate): String {
     val locale = locale()
     val use24 = DateFormat.is24HourFormat(LocalContext.current)
-    fun date(value: String?, none: String) = value?.let { runCatching { dueLabel(LocalDate.parse(it), today, locale) }.getOrNull() ?: it } ?: none
+    val format = LocalDatePrefs.current.format
+    fun date(value: String?, none: String) = value?.let { runCatching { dueLabel(LocalDate.parse(it), today, locale, format) }.getOrNull() ?: it } ?: none
     return when (field) {
         "content" -> task.content
         "description" -> task.description.ifBlank { "No description" }
@@ -527,6 +522,7 @@ fun ChangesSheet(
 @Composable
 fun RescheduleSheet(today: LocalDate, onPick: (LocalDate?) -> Unit, onPickDate: () -> Unit, onDismiss: () -> Unit) {
     val locale = locale()
+    val format = LocalDatePrefs.current.format
     // The coming Saturday, or the one after if today is the weekend.
     val weekend = generateSequence(today.plusDays(1)) { it.plusDays(1) }.first { it.dayOfWeek.value == 6 }
     val options = listOf("Today" to today, "Tomorrow" to today.plusDays(1), "This weekend" to weekend, "Next week" to today.plusDays(7))
@@ -534,7 +530,7 @@ fun RescheduleSheet(today: LocalDate, onPick: (LocalDate?) -> Unit, onPickDate: 
         Column(Modifier.navigationBarsPadding().padding(bottom = 16.dp)) {
             Text("Reschedule", Modifier.padding(horizontal = 20.dp, vertical = 4.dp).semantics { heading() }, style = MaterialTheme.typography.titleLarge)
             options.forEach { (label, date) ->
-                OptionRow(Icons.Outlined.CalendarToday, label, dueLabel(date, today, locale).takeIf { it != label }) { onPick(date) }
+                OptionRow(Icons.Outlined.CalendarToday, label, dueLabel(date, today, locale, format).takeIf { it != label }) { onPick(date) }
             }
             OptionRow(Icons.Outlined.CalendarToday, "Pick a date", null, onPickDate)
             OptionRow(Icons.AutoMirrored.Outlined.Notes, "No date", null) { onPick(null) }

@@ -59,6 +59,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.useconatus.app.R
+import com.useconatus.app.ui.format.LocalDatePrefs
+import com.useconatus.app.ui.format.deadlineLabel
 import com.useconatus.app.ui.format.dueColor
 import com.useconatus.app.ui.format.dueLabel
 import com.useconatus.app.ui.format.durationLabel
@@ -132,7 +134,8 @@ fun locale(): Locale = LocalConfiguration.current.locales[0]
 fun dueTexts(row: TaskRow, today: LocalDate): Pair<String?, String?> {
     val locale = locale()
     val use24 = DateFormat.is24HourFormat(LocalContext.current)
-    return row.due?.let { dueLabel(it, today, locale) } to row.time?.let { timeLabel(it, use24, locale) }
+    val format = LocalDatePrefs.current.format
+    return row.due?.let { dueLabel(it, today, locale, format) } to row.time?.let { timeLabel(it, use24, locale) }
 }
 
 /**
@@ -158,7 +161,7 @@ fun TaskDetails(row: TaskRow, today: LocalDate, showProject: Boolean, modifier: 
                 Detail(Icons.Outlined.CalendarToday, listOfNotNull(dueText, timeText).joinToString(" "), color)
             }
         }
-        row.deadline?.let { Detail(Icons.Outlined.OutlinedFlag, dueLabel(it, today, locale()), colors.muted) }
+        row.deadline?.let { Detail(Icons.Outlined.OutlinedFlag, deadlineLabel(it, today, locale(), LocalDatePrefs.current.format), colors.muted) }
         row.minutes?.let { Detail(Icons.Outlined.Timer, durationLabel(it), colors.muted) }
         if (row.comments > 0) Detail(Icons.Outlined.ChatBubbleOutline, "${row.comments}", colors.muted)
         row.labels.forEach { Detail(Icons.Outlined.Sell, it.name, colors.muted, iconTint = it.hue.dot) }

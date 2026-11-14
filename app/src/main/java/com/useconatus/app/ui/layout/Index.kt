@@ -136,6 +136,7 @@ import com.useconatus.app.ui.components.rememberUndoSnackbars
 import com.useconatus.app.ui.components.LocalTaskSelection
 import com.useconatus.app.ui.components.SelectionUndo
 import com.useconatus.app.ui.components.taskClick
+import com.useconatus.app.ui.format.LocalDatePrefs
 import com.useconatus.app.ui.format.dueColor
 import com.useconatus.app.ui.format.shortDueLabel
 import com.useconatus.app.ui.task.ChangesNotice
@@ -489,7 +490,7 @@ private fun IndexRow(
                     val color = dueColor(due, today, colors)
                     if (row.recurring) Icon(Icons.Outlined.Repeat, null, Modifier.size(14.dp), tint = color)
                     // Today's tasks show only their time; anything else shows its date, with a time if it has one.
-                    val text = if (due == today) timeText ?: "Today" else listOfNotNull(shortDueLabel(due, today, locale()), timeText).joinToString(" ")
+                    val text = if (due == today) timeText ?: "Today" else listOfNotNull(shortDueLabel(due, today, locale(), LocalDatePrefs.current.format), timeText).joinToString(" ")
                     Text(text, style = figures(), color = color)
                 }
             }
@@ -568,7 +569,7 @@ private fun IndexDetails(container: AppContainer, taskId: String, today: LocalDa
         }
     }
     editor?.let { EditorDialog(it, detail, today, vm::edit, vm::setLabels, vm::move, vm::addSubtask, vm::addReminder, vm::deleteReminder) { editor = null } }
-    if (commenting) CommentsSheet("Comments", detail.comments, detail.me, detail.zone, today, vm::addComment, vm::editComment, vm::deleteComment) { commenting = false }
+    if (commenting) CommentsSheet("Comments", detail.comments, detail.me, detail.zone, vm::addComment, vm::editComment, vm::deleteComment) { commenting = false }
 }
 
 @Composable

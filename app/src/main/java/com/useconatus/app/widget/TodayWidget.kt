@@ -44,6 +44,7 @@ import com.useconatus.app.ConatusApplication
 import com.useconatus.app.R
 import com.useconatus.app.data.db.TaskEntity
 import com.useconatus.app.domain.groupToday
+import com.useconatus.app.ui.today.datePrefs
 import com.useconatus.app.ui.today.days
 import com.useconatus.app.quickAddIntent
 import com.useconatus.app.ui.AppLink
@@ -82,15 +83,16 @@ class TodayWidget : GlanceAppWidget() {
         val first = tasks.first()
         val use24 = DateFormat.is24HourFormat(context)
         val locale = context.resources.configuration.locales[0]
+        val format = container.datePrefs().first().format
         provideContent {
             val shown by tasks.collectAsState(first)
-            Content(context, shown.rows, shown.today, use24, locale)
+            Content(context, shown.rows, shown.today, use24, locale, format)
         }
     }
 }
 
 @Composable
-private fun Content(context: Context, rows: List<TaskEntity>, today: LocalDate, use24: Boolean, locale: Locale) = Column(
+private fun Content(context: Context, rows: List<TaskEntity>, today: LocalDate, use24: Boolean, locale: Locale, format: String) = Column(
     GlanceModifier.fillMaxSize().background(ColorProvider(day = LightColors.surface, night = DarkColors.surface)).cornerRadius(16.dp).padding(vertical = 4.dp),
 ) {
     Row(GlanceModifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -110,18 +112,18 @@ private fun Content(context: Context, rows: List<TaskEntity>, today: LocalDate, 
         }
     } else {
         LazyColumn {
-            items(rows, itemId = { it.id.hashCode().toLong() }) { task -> TaskLine(context, task, today, use24, locale) }
+            items(rows, itemId = { it.id.hashCode().toLong() }) { task -> TaskLine(context, task, today, use24, locale, format) }
         }
     }
 }
 
 @Composable
-private fun TaskLine(context: Context, task: TaskEntity, today: LocalDate, use24: Boolean, locale: Locale) {
+private fun TaskLine(context: Context, task: TaskEntity, today: LocalDate, use24: Boolean, locale: Locale, format: String) {
     val due = task.dueDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
     val time = task.dueTime?.let { timeLabel(it, use24, locale) }
     val overdue = due != null && due < today
     // Space is short, so an overdue task shows only its date; today's show their time.
-    val dateText = if (overdue) dueLabel(due, today, locale) else time.orEmpty()
+    val dateText = if (overdue) dueLabel(due, today, locale, format) else time.orEmpty()
     val check = ColorProvider(day = priorityColor(task.priority, false), night = priorityColor(task.priority, true))
     Row(
         GlanceModifier.fillMaxWidth().height(44.dp).padding(start = 4.dp, end = 16.dp).clickable(actionStartActivity(AppLink.intent(context, AppLink.Task(task.id)))),

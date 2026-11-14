@@ -59,6 +59,7 @@ class SettingsStore(private val context: Context, private val cipher: TokenCiphe
         val local = booleanPreferencesKey("local_only")
         val board = stringSetPreferencesKey("board_projects")
         val weekStart = intPreferencesKey("week_start")
+        val dateFormat = stringPreferencesKey("date_format")
         val userId = stringPreferencesKey("user_id")
         val emailReminders = booleanPreferencesKey("email_reminders")
         val emailRemindersAvailable = booleanPreferencesKey("email_reminders_available")
@@ -134,12 +135,13 @@ class SettingsStore(private val context: Context, private val cipher: TokenCiphe
         }
     }
 
-    suspend fun updateUser(id: String, username: String, name: String?, timezone: String, weekStart: Int?, emailReminders: Boolean?, emailRemindersAvailable: Boolean) = context.dataStore.edit {
+    suspend fun updateUser(id: String, username: String, name: String?, timezone: String, weekStart: Int?, dateFormat: String?, emailReminders: Boolean?, emailRemindersAvailable: Boolean) = context.dataStore.edit {
         it[Keys.userId] = id
         it[Keys.username] = username
         name?.let { n -> it[Keys.name] = n } ?: it.remove(Keys.name)
         it[Keys.timezone] = timezone
         weekStart?.let { w -> it[Keys.weekStart] = w }
+        dateFormat?.let { f -> it[Keys.dateFormat] = f }
         emailReminders?.let { e -> it[Keys.emailReminders] = e }
         it[Keys.emailRemindersAvailable] = emailRemindersAvailable
     }
@@ -156,6 +158,9 @@ class SettingsStore(private val context: Context, private val cipher: TokenCiphe
 
     /** The account's first day of the week, 0 for Sunday; null without a server (the phone's locale decides). */
     val weekStart: Flow<Int?> = context.dataStore.data.map { if (it[Keys.token] == null) null else it[Keys.weekStart] }
+
+    /** The account's date format, such as "dd.MM.yyyy"; null without a server (the phone's locale decides). */
+    val dateFormat: Flow<String?> = context.dataStore.data.map { if (it[Keys.token] == null) null else it[Keys.dateFormat] }
 
     /** Forgets the account and its sync position. Layout, theme and the server address stay. */
     suspend fun signOut(notice: String? = null) {

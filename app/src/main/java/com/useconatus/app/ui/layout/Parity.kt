@@ -616,7 +616,7 @@ private fun ParityTaskPage(
                 }
             }
             item { AddTaskLine { editor = Editor.Subtask } }
-            item { CommentList(detail.comments, detail.me, detail.zone, today, vm::addComment, vm::editComment, vm::deleteComment) }
+            item { CommentList(detail.comments, detail.me, detail.zone, vm::addComment, vm::editComment, vm::deleteComment) }
             item { HorizontalDivider(Modifier.padding(16.dp), color = MaterialTheme.colorScheme.outlineVariant) }
             items(properties) { property ->
                 Column(

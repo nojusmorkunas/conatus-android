@@ -61,7 +61,8 @@ import com.useconatus.app.data.db.ReminderEntity
 import com.useconatus.app.notify.Reminders
 import com.useconatus.app.ui.components.SectionHeading
 import com.useconatus.app.ui.components.locale
-import com.useconatus.app.ui.format.dueLabel
+import com.useconatus.app.ui.format.LocalDatePrefs
+import com.useconatus.app.ui.format.formatDate
 import com.useconatus.app.ui.format.timeLabel
 import com.useconatus.app.ui.theme.LocalConatusColors
 import com.useconatus.app.ui.theme.SheetShape
@@ -103,13 +104,12 @@ fun reminderChoices(dueDate: String?, dueTime: String?, zone: ZoneId, now: Long,
     return choices.filter { it.at > now && it.at !in existing }
 }
 
-/** "Today 9:00 AM", "Tomorrow 14:30" or "24 Oct 9:00 AM" for an instant, in [zone]. */
+/** "30.11.2026 14:30" or "30.11.2026 2:30 PM" for an instant, in [zone], as the web shows reminders and comments. */
 @Composable
-fun momentLabel(millis: Long, zone: ZoneId, today: LocalDate): String {
+fun momentLabel(millis: Long, zone: ZoneId): String {
     val at = Instant.ofEpochMilli(millis).atZone(zone)
-    val locale = locale()
     val use24 = DateFormat.is24HourFormat(LocalContext.current)
-    return dueLabel(at.toLocalDate(), today, locale) + " " + timeLabel(at.toLocalTime().withSecond(0).withNano(0).toString(), use24, locale)
+    return formatDate(at.toLocalDate(), LocalDatePrefs.current.format) + " " + timeLabel(at.toLocalTime().withSecond(0).withNano(0).toString(), use24, locale())
 }
 
 /** What the Reminders property says: the next one, and how many more, by the phone's clock. */
@@ -117,7 +117,7 @@ fun momentLabel(millis: Long, zone: ZoneId, today: LocalDate): String {
 fun remindersText(reminders: List<ReminderEntity>): String {
     val first = reminders.minByOrNull { it.remindAt } ?: return "No reminders"
     val zone = ZoneId.systemDefault()
-    val label = momentLabel(first.remindAt, zone, LocalDate.now(zone))
+    val label = momentLabel(first.remindAt, zone)
     return if (reminders.size == 1) label else "$label and ${reminders.size - 1} more"
 }
 
@@ -196,13 +196,13 @@ fun RemindersDialog(detail: TaskDetail, onAdd: (Long) -> Unit, onDelete: (Remind
                 detail.reminders.forEach { reminder ->
                     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Outlined.Alarm, null, Modifier.size(18.dp), tint = colors.muted)
-                        Text(momentLabel(reminder.remindAt, zone, today), Modifier.weight(1f).padding(start = 12.dp), style = MaterialTheme.typography.bodyLarge)
-                        IconButton({ onDelete(reminder) }) { Icon(Icons.Outlined.Close, "Remove the reminder for ${momentLabel(reminder.remindAt, zone, today)}") }
+                        Text(momentLabel(reminder.remindAt, zone), Modifier.weight(1f).padding(start = 12.dp), style = MaterialTheme.typography.bodyLarge)
+                        IconButton({ onDelete(reminder) }) { Icon(Icons.Outlined.Close, "Remove the reminder for ${momentLabel(reminder.remindAt, zone)}") }
                     }
                 }
                 if (detail.reminders.isNotEmpty()) Spacer(Modifier.size(4.dp))
                 choices.forEach { choice ->
-                    Choice(choice.label, momentLabel(choice.at, zone, today)) { add(choice.at) }
+                    Choice(choice.label, momentLabel(choice.at, zone)) { add(choice.at) }
                 }
                 Choice("Pick a date and time", null) { picking = "" }
             }
@@ -247,7 +247,6 @@ fun CommentList(
     comments: List<CommentEntity>,
     me: String?,
     zone: ZoneId,
-    today: LocalDate,
     onAdd: (String) -> Unit,
     onEdit: (CommentEntity, String) -> Unit,
     onDelete: (CommentEntity) -> Unit,
@@ -259,7 +258,7 @@ fun CommentList(
     Column(modifier) {
         if (heading) SectionHeading("Comments", comments.size.takeIf { it > 0 }, Modifier.padding(top = 8.dp))
         comments.forEach { comment ->
-            CommentItem(comment, mine = comment.userId == null || comment.userId == me, zone, today, onEdit = { editing = comment }, onDelete = { deleting = comment })
+            CommentItem(comment, mine = comment.userId == null || comment.userId == me, zone, onEdit = { editing = comment }, onDelete = { deleting = comment })
         }
         CommentField(onAdd)
     }
@@ -275,7 +274,7 @@ fun CommentList(
 }
 
 @Composable
-private fun CommentItem(comment: CommentEntity, mine: Boolean, zone: ZoneId, today: LocalDate, onEdit: () -> Unit, onDelete: () -> Unit) {
+private fun CommentItem(comment: CommentEntity, mine: Boolean, zone: ZoneId, onEdit: () -> Unit, onDelete: () -> Unit) {
     val colors = LocalConatusColors.current
     var menu by remember { mutableStateOf(false) }
     val written = runCatching { Instant.parse(comment.createdAt).toEpochMilli() }.getOrNull()
@@ -283,7 +282,7 @@ private fun CommentItem(comment: CommentEntity, mine: Boolean, zone: ZoneId, tod
         Column(Modifier.weight(1f).padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(linkified(comment.content), style = MaterialTheme.typography.bodyMedium)
             val edited = comment.updatedAt != comment.createdAt
-            written?.let { Text(momentLabel(it, zone, today) + if (edited) ", edited" else "", style = MaterialTheme.typography.labelSmall, color = colors.muted) }
+            written?.let { Text(momentLabel(it, zone) + if (edited) ", edited" else "", style = MaterialTheme.typography.labelSmall, color = colors.muted) }
         }
         if (mine) {
             Box {
@@ -324,7 +323,6 @@ fun CommentsSheet(
     comments: List<CommentEntity>,
     me: String?,
     zone: ZoneId,
-    today: LocalDate,
     onAdd: (String) -> Unit,
     onEdit: (CommentEntity, String) -> Unit,
     onDelete: (CommentEntity) -> Unit,
@@ -335,6 +333,6 @@ fun CommentsSheet(
         if (comments.isEmpty()) {
             Text("No comments yet.", Modifier.padding(horizontal = 20.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        CommentList(comments, me, zone, today, onAdd, onEdit, onDelete, heading = false)
+        CommentList(comments, me, zone, onAdd, onEdit, onDelete, heading = false)
     }
 }

@@ -40,6 +40,7 @@ import com.useconatus.app.ui.components.LocalTaskSelection
 import com.useconatus.app.ui.components.SelectionBar
 import com.useconatus.app.ui.components.SlideOverPage
 import com.useconatus.app.ui.components.TaskSelection
+import com.useconatus.app.ui.format.LocalDatePrefs
 import com.useconatus.app.ui.layout.IndexLayout
 import com.useconatus.app.ui.layout.ParityLayout
 import com.useconatus.app.ui.layout.ThumbLayout
@@ -49,6 +50,7 @@ import com.useconatus.app.ui.signin.SignInScreen
 import com.useconatus.app.ui.signin.WelcomeScreen
 import com.useconatus.app.ui.theme.ConatusTheme
 import com.useconatus.app.ui.today.TodayViewModel
+import com.useconatus.app.ui.today.datePrefs
 import kotlinx.coroutines.launch
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
@@ -57,6 +59,7 @@ fun ConatusApp(container: AppContainer) {
     val session by container.store.session.collectAsStateWithLifecycle(initialValue = null)
     val stored by container.store.appearance.collectAsStateWithLifecycle(initialValue = null)
     val appearance = stored ?: Appearance(AppLayout.Thumb, ThemeChoice.System)
+    val dates by remember(container) { container.datePrefs() }.collectAsStateWithLifecycle(initialValue = null)
     val dark = when (appearance.theme) {
         ThemeChoice.Light -> false
         ThemeChoice.Dark -> true
@@ -74,26 +77,28 @@ fun ConatusApp(container: AppContainer) {
     var connecting by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(session) { if (session is Session.SignedIn || session is Session.SignedOut) connecting = false }
     ConatusTheme(dark) {
-        // Nothing until the layout has loaded too, so the first frame isn't another layout,
-        // which would also take a link meant for the real one.
-        when (val current = session.takeIf { stored != null }) {
-            null -> Surface(Modifier.fillMaxSize()) {}
-            Session.NoServer -> if (connecting) {
-                ServerScreen(container.session, previous = null) { connecting = false }
-            } else {
-                WelcomeScreen(onLocal = { scope.launch { container.session.useLocally() } }, onConnect = { connecting = true })
+        CompositionLocalProvider(LocalDatePrefs provides (dates ?: LocalDatePrefs.current)) {
+            // Nothing until the layout and date format have loaded too, so the first frame isn't another layout,
+            // which would also take a link meant for the real one.
+            when (val current = session.takeIf { stored != null && dates != null }) {
+                null -> Surface(Modifier.fillMaxSize()) {}
+                Session.NoServer -> if (connecting) {
+                    ServerScreen(container.session, previous = null) { connecting = false }
+                } else {
+                    WelcomeScreen(onLocal = { scope.launch { container.session.useLocally() } }, onConnect = { connecting = true })
+                }
+                Session.Local -> if (connecting) {
+                    ServerScreen(container.session, previous = null) { connecting = false }
+                } else {
+                    Main(container, null, appearance) { connecting = true }
+                }
+                is Session.SignedOut -> {
+                    val busy by container.session.browserBusy.collectAsStateWithLifecycle()
+                    val problem by container.session.browserProblem.collectAsStateWithLifecycle()
+                    SignInScreen(container.session, current.serverUrl, current.notice, busy, problem)
+                }
+                is Session.SignedIn -> Main(container, current, appearance) {}
             }
-            Session.Local -> if (connecting) {
-                ServerScreen(container.session, previous = null) { connecting = false }
-            } else {
-                Main(container, null, appearance) { connecting = true }
-            }
-            is Session.SignedOut -> {
-                val busy by container.session.browserBusy.collectAsStateWithLifecycle()
-                val problem by container.session.browserProblem.collectAsStateWithLifecycle()
-                SignInScreen(container.session, current.serverUrl, current.notice, busy, problem)
-            }
-            is Session.SignedIn -> Main(container, current, appearance) {}
         }
     }
 }
