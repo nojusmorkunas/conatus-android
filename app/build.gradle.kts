@@ -22,8 +22,8 @@ android {
         applicationId = "com.useconatus.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.0.3"
         // Launcher names. Test builds get short ones that say what they are.
         manifestPlaceholders["appLabel"] = "@string/app_name"
     }

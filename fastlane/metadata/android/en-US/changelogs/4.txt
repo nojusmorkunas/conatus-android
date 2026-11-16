@@ -1,0 +1,1 @@
+Quick add's chips can be tapped to set the date, time, priority, labels, reminders, repeat, deadline, duration, description and project without typing. Repeats are picked from choices made for the task's date, or built from parts, and read in words, such as Every other Tuesday. Sub-tasks are added with the same chips, several in a row.
