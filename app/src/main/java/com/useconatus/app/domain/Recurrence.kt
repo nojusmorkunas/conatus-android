@@ -242,3 +242,57 @@ fun firstOccurrence(rule: String, today: String): String {
     val canonical = parseRecurrence(rule) ?: throw IllegalArgumentException("Unsupported recurrence: $rule")
     return if (Regex("^every!? (\\d+ )?(day|week|month|year)s?$").matches(canonical)) today else nextOccurrence(canonical, today, today)
 }
+
+/** A rule as the repeat picker's choices, so repeats can be set without typing them. */
+data class RepeatParts(
+    /** "day", "week", "month" or "year". */
+    val unit: String = "day",
+    val every: Int = 1,
+    /** Weekly: 0 for Sunday to 6 for Saturday. Empty follows the task's own date. */
+    val days: Set<Int> = emptySet(),
+    /** Monthly: "15th", "last day", "2nd tuesday" or "last friday". Null follows the task's own date. */
+    val anchor: String? = null,
+    /** "every!": the schedule restarts from the day the task is completed. */
+    val fromCompletion: Boolean = false,
+) {
+    /** The canonical rule, or null when [every] is out of range. Days and anchors only apply where the rules can say them. */
+    fun rule(): String? {
+        val body = when {
+            unit == "month" && every == 1 && anchor != null -> anchor
+            unit == "week" && every == 1 && days == setOf(1, 2, 3, 4, 5) -> "weekday"
+            unit == "week" && every == 1 && days.isNotEmpty() -> days.joinToString(", ") { WEEKDAY_NAMES[it] }
+            unit == "week" && every == 2 && days.size == 1 -> "other ${WEEKDAY_NAMES[days.first()]}"
+            else -> "$every ${unit}s"
+        }
+        return parseRecurrence("${if (fromCompletion) "every!" else "every"} $body")
+    }
+}
+
+/** [rule] taken apart for the picker, or null when it isn't a repeat. */
+fun repeatParts(rule: String): RepeatParts? {
+    val canonical = parseRecurrence(rule) ?: return null
+    val fromCompletion = canonical.startsWith("every! ")
+    val body = canonical.substringAfter(" ")
+    val interval = Regex("^(?:(\\d+) )?(day|week|month|year)s?$").find(body)
+    val days = body.removePrefix("other ").split(", ").map(::weekdayIndex)
+    return when {
+        interval != null -> RepeatParts(interval.groupValues[2], interval.groupValues[1].toIntOrNull() ?: 1, fromCompletion = fromCompletion)
+        body == "weekday" -> RepeatParts("week", days = setOf(1, 2, 3, 4, 5), fromCompletion = fromCompletion)
+        days.all { it >= 0 } -> RepeatParts("week", if (body.startsWith("other ")) 2 else 1, days.toSet(), fromCompletion = fromCompletion)
+        else -> RepeatParts("month", anchor = body, fromCompletion = fromCompletion)
+    }
+}
+
+/** [rule] in words for the screen: "Every Monday and Friday", "Every month on the 15th", "Every 2 weeks after completion". */
+fun repeatLabel(rule: String): String {
+    val canonical = parseRecurrence(rule) ?: return rule.replaceFirstChar(Char::uppercase)
+    val body = canonical.substringAfter(" ")
+    fun named(words: String) = words.split(" ").joinToString(" ") { if (weekdayIndex(it) >= 0) it.replaceFirstChar(Char::uppercase) else it }
+    val days = body.split(", ").map(::named)
+    val words = when {
+        Regex("^(\\d+ )?(day|week|month|year)s?$").matches(body) || body == "weekday" || body.startsWith("other ") -> named(body)
+        days.all { weekdayIndex(it) >= 0 } -> if (days.size == 1) days[0] else days.dropLast(1).joinToString(", ") + " and " + days.last()
+        else -> "month on the ${named(body)}"
+    }
+    return "Every $words" + if (canonical.startsWith("every! ")) " after completion" else ""
+}

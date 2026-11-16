@@ -11,6 +11,7 @@ import com.useconatus.app.data.db.PendingChange
 import com.useconatus.app.data.db.SectionEntity
 import com.useconatus.app.data.db.SubtaskCount
 import com.useconatus.app.data.db.TaskEntity
+import com.useconatus.app.data.sync.QuickAddPicks
 import com.useconatus.app.data.sync.Completion
 import com.useconatus.app.data.sync.TaskEdit
 import com.useconatus.app.ui.today.ProjectItem
@@ -119,7 +120,7 @@ class TaskDetailViewModel(private val container: AppContainer, taskId: String) :
 
     fun move(projectId: String, sectionId: String?) = withTask { container.writes.move(it, projectId, sectionId) }
 
-    fun addSubtask(text: String) = withTask { container.writes.quickAdd(text.trim(), it.projectId, it.sectionId, parentId = it.id) }
+    fun addSubtask(text: String, picks: QuickAddPicks) = withTask { container.writes.quickAdd(text.trim(), it.projectId, it.sectionId, parentId = it.id, picks = picks) }
 
     fun setLabels(ids: List<String>) = withTask { container.writes.setLabels(it, ids) }
 

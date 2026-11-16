@@ -51,9 +51,9 @@ class QuickAddActivity : ComponentActivity() {
             }
             ConatusTheme(dark) {
                 CompositionLocalProvider(LocalDatePrefs provides prefs) {
-                    QuickAddSheet(TodayState(projects = projects, labels = labels), initial = shared, onAdd = { text ->
+                    QuickAddSheet(TodayState(projects = projects, labels = labels), initial = shared, onAdd = { text, picks ->
                         scope.launch {
-                            val task = container.writes.quickAdd(text.trim())
+                            val task = container.writes.quickAdd(text.trim(), picks = picks)
                             Toast.makeText(applicationContext, "Added “${task.content}”", Toast.LENGTH_SHORT).show()
                             finish()
                         }

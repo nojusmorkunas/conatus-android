@@ -78,7 +78,17 @@ import com.useconatus.app.data.db.TaskEntity
 import com.useconatus.app.data.sync.jsonObjectOf
 import com.useconatus.app.data.sync.withFields
 import com.useconatus.app.domain.firstOccurrence
+import com.useconatus.app.domain.RepeatParts
 import com.useconatus.app.domain.parseRecurrence
+import com.useconatus.app.domain.repeatLabel
+import com.useconatus.app.domain.WEEKDAY_NAMES
+import com.useconatus.app.domain.ordinal
+import com.useconatus.app.domain.repeatParts
+import com.useconatus.app.domain.weekdayIndex
+import com.useconatus.app.data.sync.QuickAddPicks
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.input.KeyboardType
 import com.useconatus.app.data.sync.TaskEdit
 import com.useconatus.app.ui.components.ProjectIcon
 import com.useconatus.app.ui.components.locale
@@ -129,7 +139,7 @@ fun taskProperties(detail: TaskDetail, today: LocalDate): List<Property> {
             row.due?.let { dueColor(it, today, colors) }, set = row.due != null,
         ),
         Property("Time", row.time?.let { timeLabel(it, use24, locale) } ?: "No time", Icons.Outlined.Schedule, Editor.Time, set = row.time != null),
-        Property("Repeats", task.recurrence?.replaceFirstChar(Char::uppercase) ?: "Doesn't repeat", Icons.Outlined.Repeat, Editor.Repeat, set = task.recurrence != null),
+        Property("Repeats", task.recurrence?.let(::repeatLabel) ?: "Doesn't repeat", Icons.Outlined.Repeat, Editor.Repeat, set = task.recurrence != null),
         Property("Deadline", row.deadline?.let { deadlineLabel(it, today, locale, format) } ?: "No deadline", Icons.Outlined.OutlinedFlag, Editor.Deadline, set = row.deadline != null),
         Property("Duration", row.minutes?.let(::durationLabel) ?: "No duration", Icons.Outlined.Timer, Editor.Duration, set = row.minutes != null),
         Property("Priority", "Priority ${row.priority}", Icons.Outlined.Flag, Editor.Priority, priorityColor(row.priority, colors.dark).takeIf { row.priority < 4 }),
@@ -159,7 +169,7 @@ fun EditorDialog(
     onEdit: (TaskEdit) -> Unit,
     onLabels: (List<String>) -> Unit,
     onMove: (projectId: String, sectionId: String?) -> Unit,
-    onSubtask: (String) -> Unit,
+    onSubtask: (String, QuickAddPicks) -> Unit,
     onRemind: (Long) -> Unit,
     onUnremind: (ReminderEntity) -> Unit,
     onDismiss: () -> Unit,
@@ -188,24 +198,13 @@ fun EditorDialog(
         ) { done(TaskEdit(durationMinutes = TaskEdit.Field(it))) }
         Editor.Priority -> PriorityDialog(task.priority, onDismiss) { done(TaskEdit(priority = it)) }
         Editor.Labels -> LabelsDialog(detail, onDismiss) { onLabels(it); onDismiss() }
-        Editor.Repeat -> TextDialog(
-            "Repeats", task.recurrence.orEmpty(), required = false,
-            hint = "For example every day, every Monday, every 2 weeks or every 15th. Leave empty to stop repeating.",
-            problem = { if (it.isBlank() || parseRecurrence(it) != null) null else "Conatus can't read that as a repeat." },
-            onDismiss = onDismiss,
-        ) { text ->
-            // Saved in the server's own wording; a repeat without a date starts on its first day.
-            val rule = parseRecurrence(text)
+        Editor.Repeat -> RepeatDialog(task.recurrence, task.dueDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: today, onDismiss) { rule ->
+            // A repeat without a date starts on its first day.
             val start = if (rule != null && task.dueDate == null) TaskEdit.Field(firstOccurrence(rule, today.toString())) else null
             done(TaskEdit(dueDate = start, recurrence = TaskEdit.Field(rule)))
         }
         Editor.Move -> MoveDialog(detail.projects, detail.sections, task.projectId, task.sectionId, onDismiss) { project, section -> onMove(project, section); onDismiss() }
-        Editor.Subtask -> TextDialog(
-            "Add sub-task", "", required = true,
-            hint = "Dates, repeats, @label and p1 to p4 are read from the text, as in quick add.",
-            problem = { tooLong(it, MAX_TITLE) },
-            onDismiss = onDismiss,
-        ) { onSubtask(it); onDismiss() }
+        Editor.Subtask -> SubtaskDialog(detail, today, onDismiss, onSubtask)
         Editor.Reminders -> RemindersDialog(detail, onRemind, onUnremind, onDismiss)
     }
 }
@@ -276,6 +275,169 @@ internal fun TextDialog(
     )
 }
 
+/**
+ * How a task repeats: the usual ways for its [date] in one tap, or any other built from parts.
+ * [date] is the task's date, or today when it has none.
+ */
+@Composable
+internal fun RepeatDialog(initial: String?, date: LocalDate, onDismiss: () -> Unit, onSave: (String?) -> Unit) {
+    var custom by rememberSaveable { mutableStateOf(false) }
+    if (custom) return RepeatBuilder(initial, date, onDismiss, onSave)
+    val current = initial?.let(::parseRecurrence)
+    val presets = listOf("every day", "every weekday", "every ${WEEKDAY_NAMES[date.dayOfWeek.value % 7]}", "every ${ordinal(date.dayOfMonth)}", "every year")
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Repeats") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                // A repeat made another way leads, picked.
+                (listOfNotNull(current?.takeIf { it !in presets }) + presets).forEach { rule -> RadioRow(repeatLabel(rule), rule == current) { onSave(rule) } }
+                RadioRow("Custom", false) { custom = true }
+            }
+        },
+        confirmButton = { TextButton(onDismiss) { Text("Cancel") } },
+        dismissButton = initial?.let { { TextButton({ onSave(null) }) { Text("Doesn't repeat") } } },
+        shape = MaterialTheme.shapes.large,
+    )
+}
+
+/** A repeat built from parts: how often, and on which days. The day choices start from [date]. */
+@Composable
+private fun RepeatBuilder(initial: String?, date: LocalDate, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+    val start = remember { initial?.let(::repeatParts) ?: RepeatParts() }
+    val weekStart = LocalDatePrefs.current.weekStart
+    // "2nd tuesday" or "last friday", as opposed to "15th" and "last day".
+    val startWeekday = remember { start.anchor?.let { Regex("^(last|\\d)\\w* (\\w+)$").find(it) }?.takeIf { weekdayIndex(it.groupValues[2]) >= 0 } }
+    var unit by rememberSaveable { mutableStateOf(start.unit) }
+    var everyText by rememberSaveable { mutableStateOf(start.every.toString()) }
+    // A weekly repeat with no days of its own starts on the date's weekday, so the row shows which.
+    var days by rememberSaveable { mutableStateOf(start.days.ifEmpty { setOf(date.dayOfWeek.value % 7) }) }
+    var fromCompletion by rememberSaveable { mutableStateOf(start.fromCompletion) }
+    // Monthly: 1 a day of the month, 2 a weekday of the month, 3 the last day.
+    var monthMode by rememberSaveable { mutableStateOf(when { start.anchor == "last day" -> 3; startWeekday != null -> 2; else -> 1 }) }
+    var dayText by rememberSaveable { mutableStateOf(start.anchor?.takeIf { monthMode == 1 }?.takeWhile(Char::isDigit) ?: date.dayOfMonth.toString()) }
+    // 1 to 5 for the first to the fifth, 0 for the last.
+    var nth by rememberSaveable { mutableStateOf(startWeekday?.let { it.groupValues[1].toIntOrNull() ?: 0 } ?: ((date.dayOfMonth - 1) / 7 + 1)) }
+    var nthDay by rememberSaveable { mutableStateOf(startWeekday?.let { weekdayIndex(it.groupValues[2]) } ?: (date.dayOfWeek.value % 7)) }
+
+    val every = everyText.toIntOrNull()?.takeIf { it in 1..999 }
+    val day = dayText.toIntOrNull()?.takeIf { it in 1..31 }
+    // Every second week takes one day: the first picked, in the order the row shows them.
+    val shownDays = if (every == 2 && days.size > 1) setOf(days.minBy { (it - weekStart.value % 7 + 7) % 7 }) else days
+    val anchor = when (monthMode) {
+        1 -> day?.let(::ordinal)
+        2 -> "${if (nth == 0) "last" else ordinal(nth)} ${WEEKDAY_NAMES[nthDay]}"
+        else -> "last day"
+    }
+    val monthly = unit == "month" && every == 1
+    val weekdays = unit == "week" && (every == 1 || every == 2)
+    val problem = when {
+        every == null -> "Enter a number from 1 to 999."
+        monthly && monthMode == 1 && day == null -> "Enter a day from 1 to 31."
+        else -> null
+    }
+    val rule = if (problem == null && every != null) RepeatParts(unit, every, shownDays, anchor, fromCompletion).rule() else null
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Repeats") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Every", style = MaterialTheme.typography.bodyLarge)
+                    NumberField(everyText, "How many", every == null) { everyText = it }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("day", "week", "month", "year").forEach { name ->
+                        Toggle((if (every == 1) name else "${name}s").replaceFirstChar(Char::uppercase), unit == name, Modifier.weight(1f)) { unit = name }
+                    }
+                }
+                if (weekdays) {
+                    WeekdayToggles(shownDays) { picked ->
+                        days = when {
+                            picked in shownDays -> shownDays - picked
+                            every == 2 -> setOf(picked)
+                            else -> shownDays + picked
+                        }
+                    }
+                    if (every == 2) Text("Every 2 weeks repeats on one day.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (monthly) Column {
+                    RadioRow("On a day of the month", monthMode == 1) { monthMode = 1 }
+                    if (monthMode == 1) NumberField(dayText, "Day of the month", day == null, Modifier.padding(start = 44.dp, bottom = 8.dp)) { dayText = it }
+                    RadioRow("On a weekday", monthMode == 2) { monthMode = 2 }
+                    if (monthMode == 2) Column(Modifier.padding(bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            (1..5).forEach { Toggle(ordinal(it), nth == it, Modifier.weight(1f)) { nth = it } }
+                            Toggle("Last", nth == 0, Modifier.weight(1f)) { nth = 0 }
+                        }
+                        WeekdayToggles(setOf(nthDay)) { nthDay = it }
+                    }
+                    RadioRow("On the last day of the month", monthMode == 3) { monthMode = 3 }
+                }
+                Row(
+                    Modifier.fillMaxWidth().toggleable(fromCompletion, role = Role.Checkbox) { fromCompletion = it }.heightIn(min = 48.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(fromCompletion, onCheckedChange = null)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Count from the day it's completed", style = MaterialTheme.typography.bodyLarge)
+                }
+                Text(
+                    problem ?: rule?.let(::repeatLabel).orEmpty(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (problem != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = { TextButton({ rule?.let(onSave) }, enabled = rule != null) { Text("Save") } },
+        dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
+        shape = MaterialTheme.shapes.large,
+    )
+}
+
+/** Up to three digits. What they may add up to is the caller's to judge. */
+@Composable
+private fun NumberField(text: String, label: String, error: Boolean, modifier: Modifier = Modifier, onChange: (String) -> Unit) = OutlinedTextField(
+    text, { new -> if (new.length <= 3 && new.all(Char::isDigit)) onChange(new) },
+    modifier.width(88.dp).semantics { contentDescription = label },
+    isError = error, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+    shape = MaterialTheme.shapes.medium, colors = fieldColors(),
+)
+
+@Composable
+private fun Toggle(text: String, on: Boolean, modifier: Modifier = Modifier, description: String? = null, onClick: () -> Unit) = Surface(
+    checked = on,
+    onCheckedChange = { onClick() },
+    modifier = modifier.semantics { description?.let { contentDescription = it } },
+    shape = MaterialTheme.shapes.small,
+    color = if (on) MaterialTheme.colorScheme.primary else Color.Transparent,
+    contentColor = if (on) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+    border = BorderStroke(1.dp, if (on) Color.Transparent else MaterialTheme.colorScheme.outlineVariant),
+) {
+    Box(Modifier.heightIn(min = 48.dp), contentAlignment = Alignment.Center) { Text(text, style = MaterialTheme.typography.labelMedium, maxLines = 1) }
+}
+
+/** The seven days from the account's first day of the week; 0 is Sunday, as the rules count. */
+@Composable
+private fun WeekdayToggles(picked: Set<Int>, onPick: (Int) -> Unit) = Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    val locale = locale()
+    val first = LocalDatePrefs.current.weekStart
+    (0L..6L).map { first.plus(it) }.forEach { weekday ->
+        val index = weekday.value % 7
+        Toggle(weekday.getDisplayName(java.time.format.TextStyle.SHORT, locale), index in picked, Modifier.weight(1f), weekday.getDisplayName(java.time.format.TextStyle.FULL, locale)) { onPick(index) }
+    }
+}
+
+@Composable
+private fun RadioRow(text: String, selected: Boolean, onClick: () -> Unit) = Row(
+    Modifier.fillMaxWidth().selectable(selected, role = Role.RadioButton, onClick = onClick).heightIn(min = 48.dp),
+    verticalAlignment = Alignment.CenterVertically,
+) {
+    RadioButton(selected, onClick = null)
+    Spacer(Modifier.width(12.dp))
+    Text(text, style = MaterialTheme.typography.bodyLarge)
+}
+
 /** A month to pick a date from, a tap picking it. Weeks start on the account's first day, which Android's own picker can't do. */
 @Composable
 internal fun DateDialog(initial: String?, clearLabel: String?, onDismiss: () -> Unit, onClear: () -> Unit, onPick: (LocalDate) -> Unit) {
@@ -313,11 +475,16 @@ internal fun TimeDialog(initial: String?, onDismiss: () -> Unit, onClear: () -> 
 
 /** [current] is the priority the tasks have now, if they share one. */
 @Composable
-internal fun PriorityDialog(current: Int?, onDismiss: () -> Unit, onPick: (Int) -> Unit) =
-    ChoiceDialog("Priority", (1..4).map { "Priority $it" to it }, current, onDismiss) { it?.let(onPick) }
+internal fun PriorityDialog(current: Int?, onDismiss: () -> Unit, onPick: (Int) -> Unit) {
+    val dark = LocalConatusColors.current.dark
+    ChoiceDialog("Priority", (1..4).map { "Priority $it" to it }, current, onDismiss, mark = { priority ->
+        // Priority 4 is the plain one, so its flag stays the colour of the text.
+        Icon(Icons.Outlined.Flag, null, Modifier.size(18.dp), tint = if (priority != null && priority < 4) priorityColor(priority, dark) else MaterialTheme.colorScheme.onSurfaceVariant)
+    }) { it?.let(onPick) }
+}
 
 @Composable
-private fun <T> ChoiceDialog(title: String, options: List<Pair<String, T>>, current: T, onDismiss: () -> Unit, onPick: (T) -> Unit) {
+private fun <T> ChoiceDialog(title: String, options: List<Pair<String, T>>, current: T, onDismiss: () -> Unit, mark: (@Composable (T) -> Unit)? = null, onPick: (T) -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
@@ -330,6 +497,7 @@ private fun <T> ChoiceDialog(title: String, options: List<Pair<String, T>>, curr
                     ) {
                         RadioButton(value == current, onClick = null)
                         Spacer(Modifier.width(12.dp))
+                        mark?.let { it(value); Spacer(Modifier.width(8.dp)) }
                         Text(label, style = MaterialTheme.typography.bodyLarge)
                     }
                 }
@@ -437,7 +605,7 @@ private fun fieldText(task: TaskEntity, field: String, labels: List<LabelEntity>
         "dueTime" -> task.dueTime?.let { timeLabel(it, use24, locale) } ?: "No time"
         "deadlineDate" -> date(task.deadlineDate, "No deadline")
         "durationMinutes" -> task.durationMinutes?.let(::durationLabel) ?: "No duration"
-        "recurrence" -> task.recurrence?.replaceFirstChar(Char::uppercase) ?: "Doesn't repeat"
+        "recurrence" -> task.recurrence?.let(::repeatLabel) ?: "Doesn't repeat"
         "labelIds" -> task.labelIds.mapNotNull { id -> labels.firstOrNull { it.id == id }?.name }.joinToString(", ").ifEmpty { "No labels" }
         "completed" -> if (task.isCompleted) "Completed" else "Open"
         else -> ""

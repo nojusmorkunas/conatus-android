@@ -10,6 +10,7 @@ import com.useconatus.app.data.db.ProjectEntity
 import com.useconatus.app.data.db.SubtaskCount
 import com.useconatus.app.data.db.TaskEntity
 import com.useconatus.app.data.prefs.Session
+import com.useconatus.app.data.sync.QuickAddPicks
 import com.useconatus.app.data.sync.Completion
 import com.useconatus.app.data.sync.Deletion
 import com.useconatus.app.data.sync.TaskEdit
@@ -307,7 +308,7 @@ class TodayViewModel(private val container: AppContainer) : ViewModel() {
         kept.value = emptyMap()
     }
 
-    fun quickAdd(text: String) = viewModelScope.launch { _added.emit(container.writes.quickAdd(text.trim())) }
+    fun quickAdd(text: String, picks: QuickAddPicks = QuickAddPicks()) = viewModelScope.launch { _added.emit(container.writes.quickAdd(text.trim(), picks = picks)) }
 
     fun reschedule(id: String, date: LocalDate?) = reschedule(setOf(id), date)
 

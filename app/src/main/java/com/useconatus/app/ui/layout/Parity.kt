@@ -299,8 +299,7 @@ fun ParityLayout(vm: TodayViewModel, state: TodayState, container: AppContainer)
     AddedMessages(vm.added, state, snackbar)
     if (adding) QuickAddSheet(state, onAdd = vm::quickAdd) { adding = false }
     addingTo?.let { section ->
-        val into = list?.groups?.firstOrNull { it.section?.id == section }?.section?.name ?: list?.title
-        QuickAddSheet(state, into = into, onAdd = { listVm?.quickAdd(it, section.ifEmpty { null }) }) { addingTo = null }
+        QuickAddSheet(state, list?.project?.id, section.ifEmpty { null }, onAdd = { text, picks -> listVm?.quickAdd(text, picks, section.ifEmpty { null }) }) { addingTo = null }
     }
     if (newProject) NewProjectDialog(container, onCreated = { place = it.id }) { newProject = false }
     if (newLabel) NewLabelDialog(container) { newLabel = false }

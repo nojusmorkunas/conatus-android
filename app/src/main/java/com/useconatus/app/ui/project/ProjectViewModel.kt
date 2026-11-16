@@ -1,5 +1,6 @@
 package com.useconatus.app.ui.project
 
+import com.useconatus.app.data.sync.QuickAddPicks
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.useconatus.app.AppContainer
@@ -182,8 +183,8 @@ class ListViewModel(private val container: AppContainer, private val source: Lis
         val today: LocalDate,
     )
 
-    fun quickAdd(text: String, sectionId: String? = null) = viewModelScope.launch {
-        container.writes.quickAdd(text.trim(), projectId, sectionId)
+    fun quickAdd(text: String, picks: QuickAddPicks = QuickAddPicks(), sectionId: String? = null) = viewModelScope.launch {
+        container.writes.quickAdd(text.trim(), projectId, sectionId, picks = picks)
     }
 
     fun place(taskId: String, at: Placement) = viewModelScope.launch {
