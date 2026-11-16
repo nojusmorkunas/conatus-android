@@ -694,8 +694,7 @@ private fun ThumbListPage(
         }
     }
     adding?.let { section ->
-        val into = list.groups.firstOrNull { it.section?.id == section }?.section?.name ?: list.title
-        QuickAddSheet(today, into = into, onAdd = { vm.quickAdd(it, section.ifEmpty { null }) }) { adding = null }
+        QuickAddSheet(today, list.project?.id, section.ifEmpty { null }, onAdd = { text, picks -> vm.quickAdd(text, picks, section.ifEmpty { null }) }) { adding = null }
     }
 }
 

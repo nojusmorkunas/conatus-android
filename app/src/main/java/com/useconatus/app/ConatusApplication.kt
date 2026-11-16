@@ -11,7 +11,6 @@ import com.useconatus.app.data.sync.ListWrites
 import com.useconatus.app.data.sync.Outbox
 import com.useconatus.app.data.sync.TaskWrites
 import com.useconatus.app.data.sync.NoteWrites
-import com.useconatus.app.data.sync.localTimeToMillis
 import com.useconatus.app.notify.Reminders
 import com.useconatus.app.data.prefs.Session
 import com.useconatus.app.push.Push
@@ -33,7 +32,6 @@ import com.useconatus.app.ui.today.days
 import com.useconatus.app.widget.TodayWidget
 import kotlinx.coroutines.flow.MutableStateFlow
 import com.useconatus.app.ui.AppLink
-import java.time.ZoneId
 import com.useconatus.app.data.auth.TokenCipher
 import com.useconatus.app.data.auth.keystoreKey
 import com.useconatus.app.data.db.ConatusDatabase
@@ -149,9 +147,7 @@ class AppContainer(private val context: Context) {
     val links = MutableStateFlow<AppLink?>(null)
 
     /** Every write: Room first, then (with a server) the queue and a sync as soon as there's a network. */
-    val writes = TaskWrites(db, connected = { store.token() != null }, today = { todayIn(store.timezone()) }, requestSync, dateFormat = { datePrefs().first().format }, dismissReminders = { reminders.dismiss(it) }) { task, at ->
-        localTimeToMillis(at, ZoneId.systemDefault())?.let { notes.addReminder(task.id, it) }
-    }
+    val writes = TaskWrites(db, connected = { store.token() != null }, today = { todayIn(store.timezone()) }, requestSync, dateFormat = { datePrefs().first().format }, dismissReminders = { reminders.dismiss(it) }) { task, at -> notes.addReminder(task.id, at) }
 
     /** Projects, sections and labels, written the same way. */
     val lists = ListWrites(db, connected = { store.token() != null }, requestSync)

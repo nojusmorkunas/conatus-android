@@ -148,4 +148,31 @@ class RecurrenceTest {
     @Test(expected = IllegalArgumentException::class) fun `rejects unsupported rules`() {
         next("every garbage", "2026-07-14", "2026-07-14")
     }
+
+    @Test
+    fun `the picker's parts and the rules turn into each other`() {
+        val rules = listOf(
+            "every day", "every 3 days", "every week", "every! 2 weeks", "every month", "every 6 months", "every year",
+            "every monday", "every monday, wednesday, friday", "every weekday", "every saturday, sunday", "every other tuesday",
+            "every 15th", "every! 1st", "every last day", "every 2nd tuesday", "every last friday",
+        )
+        for (rule in rules) assertEquals(rule, repeatParts(rule)?.rule())
+        assertNull(repeatParts("tomorrow"))
+        assertNull(RepeatParts(every = 0).rule())
+        // Days only say something for every week, or one day every second week.
+        assertEquals("every 3 weeks", RepeatParts("week", 3, setOf(1)).rule())
+        assertEquals("every 2 weeks", RepeatParts("week", 2, setOf(1, 3)).rule())
+    }
+
+    @Test
+    fun `rules read as words`() {
+        val labels = mapOf(
+            "every day" to "Every day", "every 3 weeks" to "Every 3 weeks", "every weekday" to "Every weekday",
+            "every monday" to "Every Monday", "every saturday, sunday" to "Every Saturday and Sunday",
+            "every monday, wednesday, friday" to "Every Monday, Wednesday and Friday", "every other tuesday" to "Every other Tuesday",
+            "every 15th" to "Every month on the 15th", "every last day" to "Every month on the last day", "every 2nd tuesday" to "Every month on the 2nd Tuesday",
+            "every! 2 weeks" to "Every 2 weeks after completion", "something else" to "Something else",
+        )
+        for ((rule, label) in labels) assertEquals(label, repeatLabel(rule))
+    }
 }

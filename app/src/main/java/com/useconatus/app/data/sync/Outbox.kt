@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import com.useconatus.app.data.db.ChangeKind
 import com.useconatus.app.data.db.Conflict
 import com.useconatus.app.data.db.ConatusDatabase
+import com.useconatus.app.data.db.LabelEntity
 import com.useconatus.app.data.db.LOCAL_ID_PREFIX
 import com.useconatus.app.data.db.PendingChange
 import com.useconatus.app.data.db.ProjectEntity
@@ -11,10 +12,13 @@ import com.useconatus.app.data.db.Target
 import com.useconatus.app.data.db.TaskEntity
 import com.useconatus.app.data.net.ConatusApi
 import com.useconatus.app.data.net.errorMessageFrom
+import com.useconatus.app.domain.QuickAddParse
+import com.useconatus.app.domain.firstOccurrence
 import com.useconatus.app.domain.keyAfter
 import com.useconatus.app.domain.nextOccurrenceWithinEnd
 import com.useconatus.app.domain.parseQuickAdd
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -27,6 +31,7 @@ import retrofit2.HttpException
 import java.io.IOException
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -80,6 +85,7 @@ fun nextToSend(changes: List<PendingChange>, conflicted: Set<String> = emptySet(
 enum class PushResult { Done, TryLater, SignedOut }
 
 /** Field changes a user can make in task details. Only the fields that are set are sent. */
+@Serializable
 data class TaskEdit(
     val content: String? = null,
     val description: String? = null,
@@ -91,6 +97,7 @@ data class TaskEdit(
     val recurrence: Field<String>? = null,
 ) {
     /** A field being set to a value or cleared, as opposed to left alone (null). */
+    @Serializable
     data class Field<T>(val value: T?)
 
     fun toJson(): JsonObject = buildJsonObject {
@@ -105,6 +112,12 @@ data class TaskEdit(
     }
 
     fun applyTo(task: TaskEntity): TaskEntity = task.withFields(toJson())
+
+    /** This edit with [next] made after it. */
+    fun then(next: TaskEdit) = TaskEdit(
+        next.content ?: content, next.description ?: description, next.priority ?: priority, next.dueDate ?: dueDate, next.dueTime ?: dueTime,
+        next.deadlineDate ?: deadlineDate, next.durationMinutes ?: durationMinutes, next.recurrence ?: recurrence,
+    )
 
     companion object {
         /** Clearing the date also clears its time and repeat, which the server requires. */
@@ -154,6 +167,52 @@ suspend fun ConatusDatabase.descendants(id: String): List<TaskEntity> {
 private suspend fun ConatusDatabase.orderAtEnd(projectId: String, sectionId: String?, parentId: String?): String =
     keyAfter(tasks().inProject(projectId).filter { it.parentId == parentId && (parentId != null || it.sectionId == sectionId) }.map { it.order })
 
+/** What quick add was told by tapping instead of typing. A typed phrase and a tapped choice for the same thing don't last together: the later one replaces the other. */
+@Serializable
+data class QuickAddPicks(
+    val edit: TaskEdit = TaskEdit(),
+    /** Where the task goes, when a place was picked. */
+    val projectId: String? = null,
+    val sectionId: String? = null,
+    /** Labels picked, besides any the text names. */
+    val labelIds: List<String> = emptyList(),
+    /** Reminders in epoch milliseconds, besides any the text asks for. */
+    val reminders: List<Long> = emptyList(),
+)
+
+/**
+ * The task quick add makes of [parsed] with [picks] over it. A time or a repeat whose date went
+ * with the text it came from gets the date the text would have given it.
+ */
+fun quickAddTask(
+    parsed: QuickAddParse,
+    picks: QuickAddPicks,
+    labels: List<LabelEntity>,
+    today: String,
+    id: String = "",
+    projectId: String = "",
+    sectionId: String? = null,
+    parentId: String? = null,
+    order: String = "",
+): TaskEntity {
+    val task = picks.edit.applyTo(
+        TaskEntity(
+            id = id, projectId = projectId, sectionId = sectionId, parentId = parentId,
+            content = parsed.content, description = "", priority = parsed.priority, dueDate = parsed.dueDate, dueTime = parsed.dueTime,
+            deadlineDate = parsed.deadlineDate, recurrence = parsed.recurrence, durationMinutes = parsed.durationMinutes,
+            isCompleted = false, order = order, updatedAt = "",
+            labelIds = (picks.labelIds + parsed.labelNames.mapNotNull { name -> labels.firstOrNull { it.name.equals(name, ignoreCase = true) }?.id }).distinct(),
+            commentCount = 0,
+        ),
+    )
+    return when {
+        task.dueDate != null -> task
+        task.recurrence != null -> task.copy(dueDate = firstOccurrence(task.recurrence, today))
+        task.dueTime != null -> task.copy(dueDate = today)
+        else -> task
+    }
+}
+
 /**
  * Every write: Room changes at once, so the app works the same with or without a server. While a
  * server is [connected], the change also goes into the queue, with the values it replaced, and
@@ -168,8 +227,8 @@ class TaskWrites(
     private val dateFormat: suspend () -> String? = { null },
     /** Clears the reminder notifications of these tasks, once the phone completes, reschedules or deletes them. */
     private val dismissReminders: (Collection<String>) -> Unit = {},
-    /** Quick add's "remind me …": the new task and the wall-clock time it read. */
-    private val remind: suspend (TaskEntity, String) -> Unit = { _, _ -> },
+    /** Quick add's reminders: the new task and when, in epoch milliseconds. */
+    private val remind: suspend (TaskEntity, Long) -> Unit = { _, _ -> },
 ) {
     private suspend fun write(
         task: TaskEntity,
@@ -371,27 +430,25 @@ class TaskWrites(
     /**
      * Reads [text] as the server would and adds the task at the end of where it goes: the project
      * it names, else [projectId] and [sectionId] (or under [parentId], for a sub-task), else the Inbox.
+     * [picks] are the choices made by tapping, which win over the text.
      */
-    suspend fun quickAdd(text: String, projectId: String? = null, sectionId: String? = null, parentId: String? = null): TaskEntity {
+    suspend fun quickAdd(text: String, projectId: String? = null, sectionId: String? = null, parentId: String? = null, picks: QuickAddPicks = QuickAddPicks()): TaskEntity {
         val projects = db.projects().all()
         val labels = db.labels().all()
         val parsed = parseQuickAdd(text, today().toString(), projects.map { it.name }, labels.map { it.name }, dateFormat())
         val named = parsed.projectName?.let { name -> projects.firstOrNull { it.name.equals(name, ignoreCase = true) } }
-        val project = named ?: projects.firstOrNull { it.id == projectId } ?: db.inbox()
-        // Naming another project takes the task out of the section or parent it was added from.
-        val here = project.id == projectId
-        val section = sectionId.takeIf { here }
+        val picked = picks.projectId?.let { id -> projects.firstOrNull { it.id == id } }
+        val project = picked ?: named ?: projects.firstOrNull { it.id == projectId } ?: db.inbox()
+        // Naming or picking another place takes the task out of the section or parent it was added from.
+        val here = project.id == projectId && (picked == null || picks.sectionId == sectionId)
+        val section = if (picked != null) picks.sectionId else sectionId.takeIf { here }
         val parent = parentId.takeIf { here }
-        val task = TaskEntity(
-            id = LOCAL_ID_PREFIX + UUID.randomUUID(), projectId = project.id, sectionId = section, parentId = parent,
-            content = parsed.content, description = "", priority = parsed.priority, dueDate = parsed.dueDate, dueTime = parsed.dueTime,
-            deadlineDate = parsed.deadlineDate, recurrence = parsed.recurrence, durationMinutes = parsed.durationMinutes,
-            isCompleted = false, order = db.orderAtEnd(project.id, section, parent), updatedAt = "",
-            labelIds = parsed.labelNames.mapNotNull { name -> labels.firstOrNull { it.name.equals(name, ignoreCase = true) }?.id },
-            commentCount = 0,
+        val task = quickAddTask(
+            parsed, picks, labels, today().toString(),
+            id = LOCAL_ID_PREFIX + UUID.randomUUID(), projectId = project.id, sectionId = section, parentId = parent, order = db.orderAtEnd(project.id, section, parent),
         )
         create(listOf(task), insert = true)
-        parsed.reminderAt?.let { remind(task, it) }
+        (listOfNotNull(parsed.reminderAt?.let { localTimeToMillis(it, ZoneId.systemDefault()) }) + picks.reminders).distinct().forEach { remind(task, it) }
         return task
     }
 

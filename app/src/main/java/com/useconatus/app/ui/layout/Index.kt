@@ -340,7 +340,7 @@ fun IndexLayout(vm: TodayViewModel, state: TodayState, container: AppContainer) 
     }
     if (archived) ArchivedProjects(container) { archived = false }
     AddedMessages(vm.added, state, snackbar)
-    if (adding) QuickAddSheet(state, into = project?.name, onAdd = { text -> listVm?.quickAdd(text) ?: vm.quickAdd(text) }) { adding = false }
+    if (adding) QuickAddSheet(state, project?.id, onAdd = { text, picks -> listVm?.quickAdd(text, picks) ?: vm.quickAdd(text, picks) }) { adding = false }
     if (reviewing) ChangesSheet(state, vm::retry, vm::discard, vm::keepMine, vm::keepTheirs) { reviewing = false }
     if (jumping) {
         ModalBottomSheet({ jumping = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = sheetColor(), shape = SheetShape) {
@@ -616,8 +616,7 @@ private fun IndexList(container: AppContainer, key: String, todayState: TodaySta
         }
     }
     addingTo?.let { section ->
-        val into = list.groups.firstOrNull { it.section?.id == section }?.section?.name ?: list.title
-        QuickAddSheet(todayState, into = into, onAdd = { vm.quickAdd(it, section.ifEmpty { null }) }) { addingTo = null }
+        QuickAddSheet(todayState, list.project?.id, section.ifEmpty { null }, onAdd = { text, picks -> vm.quickAdd(text, picks, section.ifEmpty { null }) }) { addingTo = null }
     }
 }
 
